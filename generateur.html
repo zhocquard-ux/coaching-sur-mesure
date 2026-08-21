@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Générateur — Coaching Sur-Mesure</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+    <a href="index.html" class="header-cta">← Retour au site</a>
+  </div>
+</header>
+
+<div id="lock-screen" class="gen-wrap">
+  <div class="passcode-box">
+    <div class="eyebrow">Outil interne</div>
+    <h1 style="font-size:24px; margin-top:6px;">Accès protégé</h1>
+    <p style="color:var(--ink-light); font-size:14px; margin-top:10px;">Entre ton code pour accéder au générateur de plannings.</p>
+    <input type="password" inputmode="numeric" id="passcode-input" placeholder="Code" maxlength="12">
+    <div id="passcode-error" style="color:var(--terracotta-dark); font-size:12.5px; height:16px;"></div>
+    <div><button id="unlock-btn" style="width:auto;">Déverrouiller</button></div>
+  </div>
+</div>
+
+<div id="app" class="gen-wrap" style="display:none;"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a href="index.html" class="footer-back">← Retour au site</a>
+  </div>
+</footer>
+
+<script src="data-exercices.js"></script>
+<script src="data-recettes.js"></script>
+<script src="generateur.js"></script>
+<script>
+const COACH_PASSCODE = "4127";
+
+const ZONE_LABELS = { torse:"Torse / Poitrine", dos:"Dos", epaules:"Épaules", bras:"Bras", abdos:"Abdos", jambes:"Jambes", fessiers:"Fessiers", full_body:"Full body" };
+const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:"Poignets", hanches:"Hanches", chevilles:"Chevilles" };
+const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
+const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (matin)", dejeuner:"Déjeuner", gouter:"Goûter / collation (après-midi)", diner:"Dîner" };
+const OBJECTIF_LABELS = { perte_poids:"Perte de poids / sèche", prise_masse:"Prise de masse", tonus:"Tonification", energie:"Énergie au quotidien", reprise:"Reprise de routine", endurance:"Endurance" };
+const REPAS_DEFAUT = {
+  prise_masse: ["petit_dej","collation_matin","dejeuner","gouter","diner"],
+  tonus: ["petit_dej","dejeuner","gouter","diner"],
+  perte_poids: ["petit_dej","dejeuner","diner"],
+  energie: ["petit_dej","dejeuner","gouter","diner"],
+  reprise: ["petit_dej","dejeuner","gouter","diner"],
+  endurance: ["petit_dej","dejeuner","gouter","diner"],
+};
+
+// ---- Verrouillage ----
+function tryUnlock(){
+  const input = document.getElementById("passcode-input");
+  if (input.value === COACH_PASSCODE){
+    sessionStorage.setItem("gen-unlocked", "1");
+    document.getElementById("lock-screen").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    renderForm();
+  } else {
+    document.getElementById("passcode-error").textContent = "Code incorrect.";
+    input.value = "";
+    input.focus();
+  }
+}
+document.getElementById("unlock-btn").addEventListener("click", tryUnlock);
+document.getElementById("passcode-input").addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
+if (sessionStorage.getItem("gen-unlocked") === "1"){
+  document.getElementById("lock-screen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  renderForm();
+}
+
+// ---- Construction du formulaire ----
+function chipGroup(name, options, labels){
+  return `<div class="checkbox-list" data-group="${name}">
+    ${options.map(v => `<label class="checkbox-chip"><input type="checkbox" value="${v}"> ${labels[v]}</label>`).join("")}
+  </div>`;
+}
+
+function exercicesParZone(){
+  const parZone = {};
+  EXERCICES.forEach(e => { (parZone[e.zone] = parZone[e.zone] || []).push(e); });
+  return parZone;
+}
+
+function renderForm(){
+  const parZone = exercicesParZone();
+  const joursOptions = JOURS.map(j => `<label class="checkbox-chip"><input type="checkbox" name="jour" value="${j}"> ${j}</label>`).join("");
+  const zonesOptions = Object.keys(ZONE_LABELS).filter(z => z !== "full_body").map(z => `<label class="checkbox-chip"><input type="checkbox" name="zone" value="${z}"> ${ZONE_LABELS[z]}</label>`).join("");
+  const santeOptions = Object.keys(SANTE_LABELS).map(s => `<label class="checkbox-chip"><input type="checkbox" name="sante" value="${s}"> ${SANTE_LABELS[s]}</label>`).join("");
+  const alimentOptions = Object.keys(ALIMENT_LABELS).map(a => `<label class="checkbox-chip"><input type="checkbox" name="aliment" value="${a}"> ${ALIMENT_LABELS[a]}</label>`).join("");
+  const repasOptions = Object.keys(REPAS_LABELS).map(r => `<label class="checkbox-chip"><input type="checkbox" name="repas" value="${r}" ${["petit_dej","dejeuner","diner"].includes(r)?"checked":""}> ${REPAS_LABELS[r]}</label>`).join("");
+  const excludeExosHtml = Object.keys(parZone).filter(z=>z!=="full_body").map(zone => `
+    <details style="margin-bottom:8px;">
+      <summary style="cursor:pointer; font-size:13.5px; font-weight:600;">${ZONE_LABELS[zone]}</summary>
+      <div class="checkbox-list" style="margin-top:8px;">
+        ${parZone[zone].map(e => `<label class="checkbox-chip"><input type="checkbox" name="exclude-exo" value="${e.id}"> ${e.nom}</label>`).join("")}
+      </div>
+    </details>`).join("");
+
+  document.getElementById("app").innerHTML = `
+    <div class="form-intro">
+      <div class="eyebrow">Outil interne</div>
+      <h1 style="font-size:26px; margin-top:6px;">Générateur de planning</h1>
+      <p>Rentre les infos de la personne, génère son planning sport + repas + liste de courses.</p>
+    </div>
+
+    <form id="gen-form">
+      <fieldset>
+        <legend>Profil</legend>
+        <div class="gen-form-grid">
+          <div class="field"><label class="q">Prénom</label><input type="text" id="f-prenom"></div>
+          <div class="field"><label class="q">Âge</label><input type="number" id="f-age" value="30"></div>
+          <div class="field"><label class="q">Sexe</label>
+            <select id="f-sexe"><option value="femme">Femme</option><option value="homme">Homme</option><option value="autre">Autre</option></select>
+          </div>
+          <div class="field"><label class="q">Objectif</label>
+            <select id="f-objectif">${Object.keys(OBJECTIF_LABELS).map(o=>`<option value="${o}">${OBJECTIF_LABELS[o]}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label class="q">Poids actuel (kg)</label><input type="number" id="f-poids-actuel" value="70"></div>
+          <div class="field"><label class="q">Poids souhaité (kg)</label><input type="number" id="f-poids-souhaite"></div>
+          <div class="field"><label class="q">Niveau</label>
+            <select id="f-niveau"><option value="debutant">Débutant(e)</option><option value="intermediaire">Intermédiaire</option><option value="avance">Avancé(e)</option></select>
+          </div>
+          <div class="field"><label class="q">Type d'effort</label>
+            <select id="f-type-effort"><option value="mix">Mix cardio + renfo</option><option value="cardio">Cardio uniquement</option><option value="renfo">Renforcement uniquement</option></select>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Zones prioritaires</legend>
+        <div class="checkbox-list">${zonesOptions}</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Problèmes de santé / zones à ménager</legend>
+        <div class="checkbox-list">${santeOptions}</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Exercices à exclure (détestés / déconseillés)</legend>
+        ${excludeExosHtml}
+      </fieldset>
+
+      <fieldset>
+        <legend>Logistique d'entraînement</legend>
+        <div class="gen-form-grid">
+          <div class="field"><label class="q">Jours disponibles</label><div class="checkbox-list">${joursOptions}</div></div>
+          <div class="field"><label class="q">Durée par séance (min)</label><input type="number" id="f-duree" value="45"></div>
+          <div class="field"><label class="q">Lieu</label>
+            <select id="f-lieu"><option value="salle">Salle de sport</option><option value="maison">Maison</option><option value="exterieur">Extérieur</option><option value="mixte">Mixte</option></select>
+          </div>
+          <div class="field"><label class="q">Matériel disponible</label>
+            <select id="f-materiel"><option value="aucun">Aucun</option><option value="quelques_accessoires">Quelques accessoires</option><option value="complet">Équipement complet</option></select>
+          </div>
+          <div class="field"><label class="q">Moment préféré</label>
+            <select id="f-moment"><option value="matin">Matin</option><option value="midi">Midi</option><option value="soir">Soir</option></select>
+          </div>
+        </div>
+        <div id="horaire-fields" class="gen-form-grid" style="margin-top:16px;">
+          <div class="field"><label class="q">Heure de réveil</label><input type="time" id="f-heure-reveil" value="06:30"></div>
+          <div class="field"><label class="q">Heure de début de travail</label><input type="time" id="f-heure-travail" value="09:00"></div>
+          <div class="field"><label class="q">Trajet domicile → salle (min)</label><input type="number" id="f-trajet-ds" value="10"></div>
+          <div class="field"><label class="q">Trajet salle → travail (min)</label><input type="number" id="f-trajet-st" value="15"></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Nutrition</legend>
+        <div class="checkbox-list" style="margin-bottom:14px;">
+          <label class="checkbox-chip"><input type="checkbox" id="f-vegetarien"> Végétarien</label>
+          <label class="checkbox-chip"><input type="checkbox" id="f-vegan"> Végan</label>
+          <label class="checkbox-chip"><input type="checkbox" id="f-sans-gluten"> Sans gluten</label>
+          <label class="checkbox-chip"><input type="checkbox" id="f-sans-lactose"> Sans lactose</label>
+        </div>
+        <div class="field"><label class="q">Allergies / aliments à éviter</label>${alimentOptions}</div>
+        <div class="field" style="margin-top:14px;"><label class="q">Repas à inclure</label><div class="checkbox-list">${repasOptions}</div></div>
+      </fieldset>
+
+      <button type="submit" id="generer-btn">Générer le planning</button>
+    </form>
+
+    <div id="resultats"></div>
+  `;
+
+  document.getElementById("f-moment").addEventListener("change", e => {
+    document.getElementById("horaire-fields").style.display = e.target.value === "matin" ? "grid" : "none";
+  });
+  document.getElementById("f-objectif").addEventListener("change", e => {
+    const defaut = REPAS_DEFAUT[e.target.value] || ["petit_dej","dejeuner","diner"];
+    document.querySelectorAll('input[name="repas"]').forEach(cb => { cb.checked = defaut.includes(cb.value); });
+  });
+  document.getElementById("gen-form").addEventListener("submit", e => { e.preventDefault(); genererEtAfficher(); });
+}
+
+function valeursCochees(name){
+  return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+}
+function timeToMinutes(hhmm){
+  if (!hhmm) return null;
+  const [h,m] = hhmm.split(":").map(Number);
+  return h*60+m;
+}
+
+function collecterClient(){
+  return {
+    prenom: document.getElementById("f-prenom").value || "Cliente",
+    age: Number(document.getElementById("f-age").value) || 30,
+    sexe: document.getElementById("f-sexe").value,
+    objectif: document.getElementById("f-objectif").value,
+    poidsActuel: Number(document.getElementById("f-poids-actuel").value) || 60,
+    poidsSouhaite: Number(document.getElementById("f-poids-souhaite").value) || null,
+    niveau: document.getElementById("f-niveau").value,
+    niveauTier: NIVEAU_TIER[document.getElementById("f-niveau").value],
+    typeEffort: document.getElementById("f-type-effort").value,
+    zonesPrioritaires: valeursCochees("zone"),
+    problemesSante: valeursCochees("sante"),
+    excludeIds: valeursCochees("exclude-exo"),
+    joursDispo: valeursCochees("jour"),
+    dureeSeance: Number(document.getElementById("f-duree").value) || 45,
+    lieu: document.getElementById("f-lieu").value,
+    materiel: document.getElementById("f-materiel").value,
+    materielTier: MATERIEL_TIER[document.getElementById("f-materiel").value],
+    momentPrefere: document.getElementById("f-moment").value,
+    heureReveil: timeToMinutes(document.getElementById("f-heure-reveil").value),
+    heureDebutTravail: timeToMinutes(document.getElementById("f-heure-travail").value),
+    trajetDomicileSalle: Number(document.getElementById("f-trajet-ds").value) || 0,
+    trajetSalleTravail: Number(document.getElementById("f-trajet-st").value) || 0,
+    vegetarien: document.getElementById("f-vegetarien").checked,
+    vegan: document.getElementById("f-vegan").checked,
+    sansGluten: document.getElementById("f-sans-gluten").checked,
+    sansLactose: document.getElementById("f-sans-lactose").checked,
+    alimentsEvites: valeursCochees("aliment"),
+    repasInclus: valeursCochees("repas"),
+  };
+}
+
+function genererEtAfficher(){
+  const client = collecterClient();
+  if (!client.joursDispo.length){ alert("Sélectionne au moins un jour disponible."); return; }
+  if (!client.repasInclus.length){ alert("Sélectionne au moins un repas à inclure."); return; }
+
+  const planSport = genererPlanningSport(client);
+  const planRepas = genererPlanningRepas(client);
+  const liste = genererListeCourses(planRepas);
+  const horaire = placementHoraire(client);
+
+  const resultats = document.getElementById("resultats");
+  resultats.innerHTML = `
+    <div class="results-actions">
+      <button id="regenerer-btn" class="btn-ghost">↻ Régénérer</button>
+      <button id="print-btn" class="btn-ghost">🖨 Imprimer / PDF</button>
+    </div>
+
+    <h2 style="font-size:22px;">Planning de ${client.prenom}</h2>
+    <div class="summary-stats">
+      <div class="stat-block"><div class="n">${planSport.nbSeances}</div><div class="l">Séances / semaine</div></div>
+      <div class="stat-block"><div class="n">${planRepas.proteinesCible}g</div><div class="l">Protéines / jour visées</div></div>
+    </div>
+
+    ${horaire ? `<div class="card" style="margin-bottom:24px;">${horaire.possible ? `<strong>Créneau type :</strong> ${horaire.resume}` : `<strong style="color:var(--terracotta-dark);">⚠ ${horaire.message}</strong>`}</div>` : ""}
+
+    <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
+    ${planSport.seances.map(s => `
+      <div class="plan-day">
+        <h3>${s.jour} — ${s.typeJour}</h3>
+        <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
+        <table class="plan-table">
+          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th></tr></thead>
+          <tbody>${s.exercices.map(e => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td></tr>`).join("") || `<tr><td colspan="3">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
+        </table>
+      </div>
+    `).join("")}
+
+    <h3 style="font-size:19px; margin:28px 0 12px;">Planning repas</h3>
+    ${planRepas.jours.map(j => `
+      <div class="plan-day">
+        <h3>${j.jour}</h3>
+        ${client.repasInclus.map(slot => `
+          <div class="meal-row">
+            <span class="slot">${REPAS_LABELS[slot]}</span>
+            <span>${j.repas[slot] ? j.repas[slot].nom : "— pas de recette compatible, à compléter manuellement —"}</span>
+          </div>
+        `).join("")}
+      </div>
+    `).join("")}
+
+    <h3 style="font-size:19px; margin:28px 0 12px;">Liste de courses (semaine)</h3>
+    <div class="card">
+      <div class="shopping-grid">
+        ${liste.map(i => `<div>${i.nom} — ${i.quantite} ${i.unite}</div>`).join("")}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("regenerer-btn").addEventListener("click", genererEtAfficher);
+  document.getElementById("print-btn").addEventListener("click", () => window.print());
+  resultats.scrollIntoView({ behavior:"smooth" });
+}
+</script>
+</body>
+</html>
