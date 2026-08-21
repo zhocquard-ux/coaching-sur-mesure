@@ -63,10 +63,17 @@ function exercicesValides(client){
   );
 }
 
-function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices){
+function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, preferIds){
+  preferIds = preferIds || [];
   const nbCardio = Math.max(0, Math.round(nbExercices * ratioCardio));
   const nbRenfo = nbExercices - nbCardio;
   const choisis = [];
+
+  // Les exercices préférés du client passent en premier, zone par zone.
+  zones.forEach(z => {
+    const prefere = pool.find(e => e.zone === z && preferIds.includes(e.id) && !choisis.includes(e));
+    if (prefere && choisis.filter(e=>e.type==="renfo").length < nbRenfo) choisis.push(prefere);
+  });
 
   const renfoParZone = zones.map(z => pool.filter(e => e.type === "renfo" && e.zone === z));
   let zi = 0, tentatives = 0;
@@ -80,7 +87,9 @@ function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices){
   }
 
   const cardioCandidats = pool.filter(e => e.type === "cardio" && (zones.includes(e.zone) || e.zone === "full_body"));
-  for (let i=0;i<nbCardio && cardioCandidats.length;i++){
+  const cardioPrefere = cardioCandidats.find(e => preferIds.includes(e.id) && !choisis.includes(e));
+  if (cardioPrefere && nbCardio > 0) choisis.push(cardioPrefere);
+  for (let i=choisis.filter(e=>e.type==="cardio").length; i<nbCardio && cardioCandidats.length; i++){
     const frais = cardioCandidats.filter(e => !choisis.includes(e) && !dejaUtilises.has(e.id));
     const source = frais.length ? frais : cardioCandidats.filter(e => !choisis.includes(e));
     if (!source.length) break;
@@ -109,7 +118,7 @@ function genererPlanningSport(client){
     const zones = zonesPourJour(typeJour, client.zonesPrioritaires, idx);
     dernierType = typeJour;
     const nbEx = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
-    const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx);
+    const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds);
     return { jour, typeJour, exercices };
   });
 
@@ -123,14 +132,16 @@ function placementHoraire(client){
   const reveil = client.heureReveil, debutTravail = client.heureDebutTravail;
   const trajetDS = client.trajetDomicileSalle || 0, trajetST = client.trajetSalleTravail || 0;
   const duree = client.dureeSeance || 45;
-  const fenetre = debutTravail - reveil - trajetDS - trajetST;
+  // Temps réservé après la séance pour manger/se préparer avant de partir travailler.
+  const tamponRepas = client.tamponRepas != null ? client.tamponRepas : 60;
+  const fenetre = debutTravail - reveil - trajetDS - trajetST - tamponRepas;
   if (fenetre < duree){
-    return { possible:false, message:"Ta fenêtre du matin est trop courte pour une séance en salle avant le travail — mieux vaut une séance à la maison, ou raccourcir la durée." };
+    return { possible:false, message:"Ta fenêtre du matin est trop courte pour une séance en salle avant le travail, en gardant du temps pour manger — mieux vaut une séance à la maison, réduire le tampon repas, ou raccourcir la durée." };
   }
-  const depart = debutTravail - trajetST - duree - trajetDS;
+  const depart = debutTravail - trajetST - tamponRepas - duree - trajetDS;
   return {
     possible: true,
-    resume: `Départ domicile ${minutesToHHMM(depart)} — salle ${minutesToHHMM(depart+trajetDS)} à ${minutesToHHMM(depart+trajetDS+duree)} — arrivée travail ${minutesToHHMM(debutTravail)}`
+    resume: `Départ domicile ${minutesToHHMM(depart)} — salle ${minutesToHHMM(depart+trajetDS)} à ${minutesToHHMM(depart+trajetDS+duree)} — repas/préparation jusqu'à ${minutesToHHMM(debutTravail-trajetST)} — arrivée travail ${minutesToHHMM(debutTravail)}`
   };
 }
 
@@ -147,6 +158,7 @@ function quotaProteines(poids, objectif, age){
 }
 
 function recettesValides(repasType, client){
+  const motsLibres = (client.alimentsEvitesLibre || []).map(m => m.toLowerCase().trim()).filter(Boolean);
   return RECETTES.filter(r => {
     if (r.repas !== repasType) return false;
     if (client.vegetarien && !r.vegetarien) return false;
@@ -154,6 +166,7 @@ function recettesValides(repasType, client){
     if (client.sansGluten && !r.sans_gluten) return false;
     if (client.sansLactose && !r.sans_lactose) return false;
     if (r.contient.some(tag => client.alimentsEvites.includes(tag))) return false;
+    if (motsLibres.some(mot => r.ingredients.some(ing => ing.nom.toLowerCase().includes(mot)))) return false;
     return true;
   });
 }

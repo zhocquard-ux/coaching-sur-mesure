@@ -193,6 +193,9 @@ legend{ font-weight:600; font-size:13px; text-transform:uppercase; letter-spacin
 .meal-row{ display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px dashed var(--line); font-size:13.5px; }
 .meal-row:last-child{ border-bottom:none; }
 .meal-row .slot{ color:var(--ink-light); font-size:11px; text-transform:uppercase; letter-spacing:0.04em; min-width:110px; }
+.meal-row summary::-webkit-details-marker{ display:none; }
+.meal-row summary{ font-size:13.5px; }
+.meal-detail{ margin-top:10px; padding:12px 14px; background:var(--cream); border:1px solid var(--line); border-radius:3px; font-size:12.5px; line-height:1.6; }
 .shopping-grid{ columns:2; column-gap:30px; font-size:13.5px; }
 @media (max-width:640px){ .shopping-grid{ columns:1; } }
 .shopping-grid div{ padding:4px 0; border-bottom:1px dashed var(--line); break-inside:avoid; }

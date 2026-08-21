@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gérer la base — Coaching Sur-Mesure</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .tabs{ display:flex; gap:10px; margin-bottom:24px; }
+  .tab-btn{ width:auto; background:transparent; color:var(--ink-light); border:1px solid var(--line); }
+  .tab-btn.active{ background:var(--terracotta); color:#fff; border-color:var(--terracotta); }
+  .admin-table{ width:100%; border-collapse:collapse; font-size:13px; margin-bottom:30px; }
+  .admin-table th{ text-align:left; font-size:11px; text-transform:uppercase; color:var(--ink-light); padding:6px 8px; border-bottom:1px solid var(--line); }
+  .admin-table td{ padding:7px 8px; border-bottom:1px dashed var(--line); vertical-align:top; }
+  .admin-table button{ width:auto; padding:5px 10px; font-size:11px; margin-right:4px; }
+  textarea.admin-textarea{ min-height:90px; font-family:Georgia,serif; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+    <a href="generateur.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">← Générateur</a>
+  </div>
+</header>
+
+<div id="app" class="gen-wrap" style="display:none;"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner"><a href="generateur.html" class="footer-back">← Retour au générateur</a></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+const ZONE_LABELS = { torse:"Torse / Poitrine", dos:"Dos", epaules:"Épaules", bras:"Bras", abdos:"Abdos", jambes:"Jambes", fessiers:"Fessiers", full_body:"Full body" };
+const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:"Poignets", hanches:"Hanches", chevilles:"Chevilles" };
+const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
+const OBJECTIF_LABELS = { perte_poids:"Perte de poids / sèche", prise_masse:"Prise de masse", tonus:"Tonification", energie:"Énergie au quotidien", reprise:"Reprise de routine", endurance:"Endurance" };
+const NIVEAU_LABELS = { 0:"Débutant(e)", 1:"Intermédiaire", 2:"Avancé(e)" };
+const MATERIEL_LABELS = { 0:"Aucun", 1:"Quelques accessoires", 2:"Équipement complet" };
+
+let ongletActif = "exercices";
+let exoEnEdition = null;
+let recetteEnEdition = null;
+
+async function verifierSession(){
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session){ window.location.href = "login.html"; return; }
+  document.getElementById("app").style.display = "block";
+  render();
+}
+verifierSession();
+
+function champCoche(name, labels, selection){
+  return Object.keys(labels).map(k => `<label class="checkbox-chip"><input type="checkbox" name="${name}" value="${k}" ${((selection||[]).includes(k))?"checked":""}> ${labels[k]}</label>`).join("");
+}
+function valeursCochees(root, name){
+  return [...root.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+}
+
+async function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="form-intro">
+      <div class="eyebrow">Outil interne</div>
+      <h1 style="font-size:26px; margin-top:6px;">Gérer la base</h1>
+      <p>Ajoute, modifie ou supprime des exercices et des recettes directement.</p>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn ${ongletActif==='exercices'?'active':''}" id="tab-exercices">Exercices</button>
+      <button class="tab-btn ${ongletActif==='recettes'?'active':''}" id="tab-recettes">Nutrition / Recettes</button>
+    </div>
+    <div id="contenu-onglet"></div>
+  `;
+  document.getElementById("tab-exercices").addEventListener("click", () => { ongletActif="exercices"; exoEnEdition=null; render(); });
+  document.getElementById("tab-recettes").addEventListener("click", () => { ongletActif="recettes"; recetteEnEdition=null; render(); });
+
+  if (ongletActif === "exercices") await renderExercices();
+  else await renderRecettes();
+}
+
+// ================= EXERCICES =================
+async function renderExercices(){
+  const box = document.getElementById("contenu-onglet");
+  const { data, error } = await supabaseClient.from("exercices").select("*").order("zone").order("nom");
+  if (error){ box.innerHTML = `<p>Erreur : ${error.message}</p>`; return; }
+  const e = exoEnEdition || {};
+
+  box.innerHTML = `
+    <fieldset>
+      <legend>${e.id ? "Modifier l'exercice" : "Ajouter un exercice"}</legend>
+      <form id="exo-form">
+        <div class="gen-form-grid">
+          <div class="field"><label class="q">Nom</label><input type="text" id="ex-nom" value="${e.nom||""}" required></div>
+          <div class="field"><label class="q">Zone</label>
+            <select id="ex-zone">${Object.keys(ZONE_LABELS).map(z=>`<option value="${z}" ${e.zone===z?"selected":""}>${ZONE_LABELS[z]}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label class="q">Niveau minimum</label>
+            <select id="ex-niveau">${Object.keys(NIVEAU_LABELS).map(n=>`<option value="${n}" ${String(e.niveau)===n?"selected":""}>${NIVEAU_LABELS[n]}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label class="q">Matériel minimum requis</label>
+            <select id="ex-materiel">${Object.keys(MATERIEL_LABELS).map(m=>`<option value="${m}" ${String(e.materiel)===m?"selected":""}>${MATERIEL_LABELS[m]}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label class="q">Type</label>
+            <select id="ex-type"><option value="renfo" ${e.type==="renfo"?"selected":""}>Renforcement</option><option value="cardio" ${e.type==="cardio"?"selected":""}>Cardio</option></select>
+          </div>
+          <div class="field"><label class="q">Format (ex : 4x10, 3x30s)</label><input type="text" id="ex-format" value="${e.format||""}"></div>
+        </div>
+        <div class="field" style="margin-top:14px;"><label class="q">Contre-indications</label><div class="checkbox-list">${champCoche("ex-ci", SANTE_LABELS, e.contre_indications)}</div></div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="submit">${e.id ? "Enregistrer les modifications" : "Ajouter"}</button>
+          ${e.id ? `<button type="button" id="annuler-exo" class="btn-ghost">Annuler</button>` : ""}
+        </div>
+      </form>
+    </fieldset>
+
+    <table class="admin-table">
+      <thead><tr><th>Nom</th><th>Zone</th><th>Niveau</th><th>Matériel</th><th>Type</th><th>Format</th><th></th></tr></thead>
+      <tbody>
+        ${data.map(x => `<tr>
+          <td>${x.nom}</td><td>${ZONE_LABELS[x.zone]||x.zone}</td><td>${NIVEAU_LABELS[x.niveau]}</td><td>${MATERIEL_LABELS[x.materiel]}</td><td>${x.type}</td><td>${x.format||""}</td>
+          <td><button type="button" class="btn-ghost edit-exo" data-id="${x.id}">Modifier</button><button type="button" class="btn-ghost del-exo" data-id="${x.id}">Supprimer</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+
+  document.getElementById("exo-form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const row = {
+      nom: document.getElementById("ex-nom").value.trim(),
+      zone: document.getElementById("ex-zone").value,
+      niveau: Number(document.getElementById("ex-niveau").value),
+      materiel: Number(document.getElementById("ex-materiel").value),
+      type: document.getElementById("ex-type").value,
+      format: document.getElementById("ex-format").value.trim(),
+      contre_indications: valeursCochees(document, "ex-ci"),
+    };
+    let result;
+    if (e.id) result = await supabaseClient.from("exercices").update(row).eq("id", e.id);
+    else result = await supabaseClient.from("exercices").insert(row);
+    if (result.error){ alert("Erreur : " + result.error.message); return; }
+    exoEnEdition = null;
+    render();
+  });
+  const annuler = document.getElementById("annuler-exo");
+  if (annuler) annuler.addEventListener("click", () => { exoEnEdition=null; render(); });
+
+  box.querySelectorAll(".edit-exo").forEach(btn => btn.addEventListener("click", () => {
+    exoEnEdition = data.find(x => x.id === btn.dataset.id);
+    render();
+    window.scrollTo(0,0);
+  }));
+  box.querySelectorAll(".del-exo").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Supprimer cet exercice ?")) return;
+    const { error } = await supabaseClient.from("exercices").delete().eq("id", btn.dataset.id);
+    if (error){ alert("Erreur : " + error.message); return; }
+    render();
+  }));
+}
+
+// ================= RECETTES =================
+function ingredientsToText(list){ return (list||[]).map(i => `${i.nom}, ${i.quantite}, ${i.unite}`).join("\n"); }
+function textToIngredients(text){
+  return text.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+    const [nom, quantite, unite] = l.split(",").map(s => s.trim());
+    return { nom, quantite: Number(quantite)||0, unite: unite||"" };
+  });
+}
+function etapesToText(list){ return (list||[]).join("\n"); }
+function textToEtapes(text){ return text.split("\n").map(l=>l.trim()).filter(Boolean); }
+
+async function renderRecettes(){
+  const box = document.getElementById("contenu-onglet");
+  const { data, error } = await supabaseClient.from("recettes").select("*").order("repas").order("nom");
+  if (error){ box.innerHTML = `<p>Erreur : ${error.message}</p>`; return; }
+  const r = recetteEnEdition || {};
+
+  box.innerHTML = `
+    <fieldset>
+      <legend>${r.id ? "Modifier la recette" : "Ajouter une recette"}</legend>
+      <form id="recette-form">
+        <div class="gen-form-grid">
+          <div class="field"><label class="q">Nom</label><input type="text" id="re-nom" value="${r.nom||""}" required></div>
+          <div class="field"><label class="q">Repas</label>
+            <select id="re-repas">
+              <option value="petit_dej" ${r.repas==="petit_dej"?"selected":""}>Petit-déjeuner</option>
+              <option value="dejeuner_diner" ${r.repas==="dejeuner_diner"?"selected":""}>Déjeuner / Dîner</option>
+              <option value="collation" ${r.repas==="collation"?"selected":""}>Collation / Goûter</option>
+            </select>
+          </div>
+          <div class="field"><label class="q">Protéines (g / portion)</label><input type="number" id="re-proteines" value="${r.proteines_g||0}"></div>
+        </div>
+        <div class="checkbox-list" style="margin:14px 0;">
+          <label class="checkbox-chip"><input type="checkbox" id="re-vegetarien" ${r.vegetarien?"checked":""}> Végétarien</label>
+          <label class="checkbox-chip"><input type="checkbox" id="re-vegan" ${r.vegan?"checked":""}> Végan</label>
+          <label class="checkbox-chip"><input type="checkbox" id="re-sans-gluten" ${r.sans_gluten?"checked":""}> Sans gluten</label>
+          <label class="checkbox-chip"><input type="checkbox" id="re-sans-lactose" ${r.sans_lactose?"checked":""}> Sans lactose</label>
+        </div>
+        <div class="field"><label class="q">Adaptée aux objectifs</label><div class="checkbox-list">${champCoche("re-profils", OBJECTIF_LABELS, r.profils)}</div></div>
+        <div class="field" style="margin-top:14px;"><label class="q">Contient (allergènes fréquents)</label><div class="checkbox-list">${champCoche("re-contient", ALIMENT_LABELS, r.contient)}</div></div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Ingrédients (1 par ligne : nom, quantité, unité)</label>
+          <textarea class="admin-textarea" id="re-ingredients">${ingredientsToText(r.ingredients)}</textarea>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Étapes de préparation (1 par ligne, batch cooking)</label>
+          <textarea class="admin-textarea" id="re-etapes">${etapesToText(r.etapes)}</textarea>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="submit">${r.id ? "Enregistrer les modifications" : "Ajouter"}</button>
+          ${r.id ? `<button type="button" id="annuler-recette" class="btn-ghost">Annuler</button>` : ""}
+        </div>
+      </form>
+    </fieldset>
+
+    <table class="admin-table">
+      <thead><tr><th>Nom</th><th>Repas</th><th>Protéines</th><th></th></tr></thead>
+      <tbody>
+        ${data.map(x => `<tr>
+          <td>${x.nom}</td><td>${x.repas}</td><td>${x.proteines_g||0}g</td>
+          <td><button type="button" class="btn-ghost edit-recette" data-id="${x.id}">Modifier</button><button type="button" class="btn-ghost del-recette" data-id="${x.id}">Supprimer</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+
+  document.getElementById("recette-form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const row = {
+      nom: document.getElementById("re-nom").value.trim(),
+      repas: document.getElementById("re-repas").value,
+      proteines_g: Number(document.getElementById("re-proteines").value) || 0,
+      vegetarien: document.getElementById("re-vegetarien").checked,
+      vegan: document.getElementById("re-vegan").checked,
+      sans_gluten: document.getElementById("re-sans-gluten").checked,
+      sans_lactose: document.getElementById("re-sans-lactose").checked,
+      profils: valeursCochees(document, "re-profils"),
+      contient: valeursCochees(document, "re-contient"),
+      ingredients: textToIngredients(document.getElementById("re-ingredients").value),
+      etapes: textToEtapes(document.getElementById("re-etapes").value),
+    };
+    let result;
+    if (r.id) result = await supabaseClient.from("recettes").update(row).eq("id", r.id);
+    else result = await supabaseClient.from("recettes").insert(row);
+    if (result.error){ alert("Erreur : " + result.error.message); return; }
+    recetteEnEdition = null;
+    render();
+  });
+  const annuler = document.getElementById("annuler-recette");
+  if (annuler) annuler.addEventListener("click", () => { recetteEnEdition=null; render(); });
+
+  box.querySelectorAll(".edit-recette").forEach(btn => btn.addEventListener("click", () => {
+    recetteEnEdition = data.find(x => x.id === btn.dataset.id);
+    render();
+    window.scrollTo(0,0);
+  }));
+  box.querySelectorAll(".del-recette").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Supprimer cette recette ?")) return;
+    const { error } = await supabaseClient.from("recettes").delete().eq("id", btn.dataset.id);
+    if (error){ alert("Erreur : " + error.message); return; }
+    render();
+  }));
+}
+</script>
+</body>
+</html>

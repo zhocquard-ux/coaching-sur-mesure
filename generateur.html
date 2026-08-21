@@ -12,6 +12,7 @@
   <div class="header-inner">
     <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
     <div style="display:flex; gap:10px;">
+      <a href="admin.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">Gérer la base</a>
       <a href="index.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">← Site</a>
       <button id="logout-btn" class="header-cta" style="width:auto;">Se déconnecter</button>
     </div>
@@ -28,10 +29,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
-<script src="data-exercices.js"></script>
-<script src="data-recettes.js"></script>
 <script src="generateur.js"></script>
 <script>
+let EXERCICES = [];
+let RECETTES = [];
+
 const ZONE_LABELS = { torse:"Torse / Poitrine", dos:"Dos", epaules:"Épaules", bras:"Bras", abdos:"Abdos", jambes:"Jambes", fessiers:"Fessiers", full_body:"Full body" };
 const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:"Poignets", hanches:"Hanches", chevilles:"Chevilles" };
 const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
@@ -56,11 +58,26 @@ async function verifierSession(){
     window.location.href = "login.html";
     return;
   }
+  document.getElementById("app").innerHTML = `<p style="text-align:center; color:var(--ink-light); padding:60px 0;">Chargement…</p>`;
   document.getElementById("app").style.display = "block";
+  await chargerBibliotheque();
   renderForm();
   chargerListeClientes();
 }
 verifierSession();
+
+async function chargerBibliotheque(){
+  const [ex, re] = await Promise.all([
+    supabaseClient.from("exercices").select("*"),
+    supabaseClient.from("recettes").select("*"),
+  ]);
+  if (ex.error || re.error){
+    alert("Erreur de chargement de la bibliothèque : " + (ex.error?.message || re.error?.message));
+    return;
+  }
+  EXERCICES = ex.data;
+  RECETTES = re.data;
+}
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabaseClient.auth.signOut();
@@ -86,6 +103,13 @@ function renderForm(){
       <summary style="cursor:pointer; font-size:13.5px; font-weight:600;">${ZONE_LABELS[zone]}</summary>
       <div class="checkbox-list" style="margin-top:8px;">
         ${parZone[zone].map(e => `<label class="checkbox-chip"><input type="checkbox" name="exclude-exo" value="${e.id}"> ${e.nom}</label>`).join("")}
+      </div>
+    </details>`).join("");
+  const preferExosHtml = Object.keys(parZone).filter(z=>z!=="full_body").map(zone => `
+    <details style="margin-bottom:8px;">
+      <summary style="cursor:pointer; font-size:13.5px; font-weight:600;">${ZONE_LABELS[zone]}</summary>
+      <div class="checkbox-list" style="margin-top:8px;">
+        ${parZone[zone].map(e => `<label class="checkbox-chip"><input type="checkbox" name="prefer-exo" value="${e.id}"> ${e.nom}</label>`).join("")}
       </div>
     </details>`).join("");
 
@@ -141,6 +165,11 @@ function renderForm(){
       </fieldset>
 
       <fieldset>
+        <legend>Exercices préférés (à privilégier dans le planning)</legend>
+        ${preferExosHtml}
+      </fieldset>
+
+      <fieldset>
         <legend>Logistique d'entraînement</legend>
         <div class="gen-form-grid">
           <div class="field"><label class="q">Jours disponibles</label><div class="checkbox-list">${joursOptions}</div></div>
@@ -160,6 +189,7 @@ function renderForm(){
           <div class="field"><label class="q">Heure de début de travail</label><input type="time" id="f-heure-travail" value="09:00"></div>
           <div class="field"><label class="q">Trajet domicile → salle (min)</label><input type="number" id="f-trajet-ds" value="10"></div>
           <div class="field"><label class="q">Trajet salle → travail (min)</label><input type="number" id="f-trajet-st" value="15"></div>
+          <div class="field"><label class="q">Temps pour manger / se préparer avant le travail (min)</label><input type="number" id="f-tampon-repas" value="60"></div>
         </div>
       </fieldset>
 
@@ -172,6 +202,15 @@ function renderForm(){
           <label class="checkbox-chip"><input type="checkbox" id="f-sans-lactose"> Sans lactose</label>
         </div>
         <div class="field"><label class="q">Allergies / aliments à éviter</label>${alimentOptions}</div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Autres aliments précis à éviter</label>
+          <div class="hint">Ex : jambon, fromage grec — tape et clique Ajouter</div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="f-aliment-libre-input" placeholder="Ex : jambon">
+            <button type="button" id="ajouter-aliment-libre-btn" class="btn-ghost" style="width:auto;">Ajouter</button>
+          </div>
+          <div class="checkbox-list" id="aliments-libres-liste" style="margin-top:10px;"></div>
+        </div>
         <div class="field" style="margin-top:14px;"><label class="q">Repas à inclure</label><div class="checkbox-list">${repasOptions}</div></div>
       </fieldset>
 
@@ -190,6 +229,30 @@ function renderForm(){
   });
   document.getElementById("gen-form").addEventListener("submit", e => { e.preventDefault(); genererEtAfficher(); });
   document.getElementById("nouvelle-fiche-btn").addEventListener("click", nouvelleFiche);
+  document.getElementById("ajouter-aliment-libre-btn").addEventListener("click", ajouterAlimentLibre);
+  document.getElementById("f-aliment-libre-input").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); ajouterAlimentLibre(); } });
+  renderAlimentsLibres();
+}
+
+let alimentsLibreCourants = [];
+function renderAlimentsLibres(){
+  const box = document.getElementById("aliments-libres-liste");
+  if (!box) return;
+  box.innerHTML = alimentsLibreCourants.map((mot, i) => `
+    <span class="checkbox-chip">${mot} <span data-i="${i}" class="retirer-aliment-libre" style="cursor:pointer; color:var(--terracotta-dark); margin-left:4px;">×</span></span>
+  `).join("");
+  box.querySelectorAll(".retirer-aliment-libre").forEach(el => el.addEventListener("click", () => {
+    alimentsLibreCourants.splice(Number(el.dataset.i), 1);
+    renderAlimentsLibres();
+  }));
+}
+function ajouterAlimentLibre(){
+  const input = document.getElementById("f-aliment-libre-input");
+  const mot = input.value.trim();
+  if (!mot) return;
+  if (!alimentsLibreCourants.includes(mot)) alimentsLibreCourants.push(mot);
+  input.value = "";
+  renderAlimentsLibres();
 }
 
 function valeursCochees(name){
@@ -219,6 +282,7 @@ function collecterClient(){
     zonesPrioritaires: valeursCochees("zone"),
     problemesSante: valeursCochees("sante"),
     excludeIds: valeursCochees("exclude-exo"),
+    preferIds: valeursCochees("prefer-exo"),
     joursDispo: valeursCochees("jour"),
     dureeSeance: Number(document.getElementById("f-duree").value) || 45,
     lieu: document.getElementById("f-lieu").value,
@@ -231,11 +295,13 @@ function collecterClient(){
     heureDebutTravail: timeToMinutes(document.getElementById("f-heure-travail").value),
     trajetDomicileSalle: Number(document.getElementById("f-trajet-ds").value) || 0,
     trajetSalleTravail: Number(document.getElementById("f-trajet-st").value) || 0,
+    tamponRepas: Number(document.getElementById("f-tampon-repas").value) || 0,
     vegetarien: document.getElementById("f-vegetarien").checked,
     vegan: document.getElementById("f-vegan").checked,
     sansGluten: document.getElementById("f-sans-gluten").checked,
     sansLactose: document.getElementById("f-sans-lactose").checked,
     alimentsEvites: valeursCochees("aliment"),
+    alimentsEvitesLibre: alimentsLibreCourants.slice(),
     repasInclus: valeursCochees("repas"),
   };
 }
@@ -258,6 +324,7 @@ function remplirFormulaire(c){
   document.getElementById("f-heure-travail").value = c.heure_debut_travail || "09:00";
   document.getElementById("f-trajet-ds").value = c.trajet_domicile_salle || 0;
   document.getElementById("f-trajet-st").value = c.trajet_salle_travail || 0;
+  document.getElementById("f-tampon-repas").value = c.tampon_repas != null ? c.tampon_repas : 60;
   document.getElementById("f-vegetarien").checked = !!c.vegetarien;
   document.getElementById("f-vegan").checked = !!c.vegan;
   document.getElementById("f-sans-gluten").checked = !!c.sans_gluten;
@@ -265,8 +332,11 @@ function remplirFormulaire(c){
   cocherValeurs("zone", c.zones_prioritaires);
   cocherValeurs("sante", c.problemes_sante);
   cocherValeurs("exclude-exo", c.exclude_exercices);
+  cocherValeurs("prefer-exo", c.exercices_preferes);
   cocherValeurs("jour", c.jours_dispo);
   cocherValeurs("aliment", c.aliments_evites);
+  alimentsLibreCourants = (c.aliments_evites_libre || []).slice();
+  renderAlimentsLibres();
   cocherValeurs("repas", c.repas_inclus && c.repas_inclus.length ? c.repas_inclus : ["petit_dej","dejeuner","diner"]);
 }
 
@@ -274,6 +344,9 @@ function nouvelleFiche(){
   clienteActuelleId = null;
   document.getElementById("gen-form").reset();
   cocherValeurs("repas", ["petit_dej","dejeuner","diner"]);
+  document.getElementById("f-tampon-repas").value = 60;
+  alimentsLibreCourants = [];
+  renderAlimentsLibres();
   document.getElementById("horaire-fields").style.display = "grid";
   document.getElementById("resultats").innerHTML = "";
   window.scrollTo(0,0);
@@ -313,12 +386,12 @@ async function enregistrerFiche(){
     poids_actuel: client.poidsActuel, poids_souhaite: client.poidsSouhaite,
     niveau: client.niveau, type_effort: client.typeEffort,
     zones_prioritaires: client.zonesPrioritaires, problemes_sante: client.problemesSante,
-    exclude_exercices: client.excludeIds, jours_dispo: client.joursDispo,
+    exclude_exercices: client.excludeIds, exercices_preferes: client.preferIds, jours_dispo: client.joursDispo,
     duree_seance: client.dureeSeance, lieu: client.lieu, materiel: client.materiel,
     moment_prefere: client.momentPrefere, heure_reveil: client.heureReveilRaw, heure_debut_travail: client.heureDebutTravailRaw,
-    trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail,
+    trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail, tampon_repas: client.tamponRepas,
     vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
-    aliments_evites: client.alimentsEvites, repas_inclus: client.repasInclus,
+    aliments_evites: client.alimentsEvites, aliments_evites_libre: client.alimentsEvitesLibre, repas_inclus: client.repasInclus,
     dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
   };
   const btn = document.getElementById("enregistrer-btn");
@@ -382,12 +455,22 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
     ${planRepas.jours.map(j => `
       <div class="plan-day">
         <h3>${j.jour}</h3>
-        ${client.repasInclus.map(slot => `
-          <div class="meal-row">
-            <span class="slot">${REPAS_LABELS[slot]}</span>
-            <span>${j.repas[slot] ? j.repas[slot].nom : "— pas de recette compatible, à compléter manuellement —"}</span>
-          </div>
-        `).join("")}
+        ${client.repasInclus.map(slot => {
+          const r = j.repas[slot];
+          if (!r) return `<div class="meal-row"><span class="slot">${REPAS_LABELS[slot]}</span><span>— pas de recette compatible, à compléter manuellement —</span></div>`;
+          return `
+          <details class="meal-row" style="display:block;">
+            <summary style="display:flex; justify-content:space-between; gap:10px; cursor:pointer; list-style:none;">
+              <span class="slot">${REPAS_LABELS[slot]}</span>
+              <span>${r.nom}</span>
+            </summary>
+            <div class="meal-detail">
+              <strong>Ingrédients</strong> (1 portion) : ${r.ingredients.map(i=>`${i.nom} (${i.quantite} ${i.unite})`).join(", ")}
+              <div style="margin-top:8px;"><strong>Préparation — fiche batch cooking</strong></div>
+              <ol style="margin:6px 0 0; padding-left:18px;">${(r.etapes||[]).map(e=>`<li>${e}</li>`).join("") || "<li>Pas d'étapes renseignées.</li>"}</ol>
+            </div>
+          </details>`;
+        }).join("")}
       </div>
     `).join("")}
 
