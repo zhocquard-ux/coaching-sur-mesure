@@ -11,20 +11,12 @@
 <header class="site-header">
   <div class="header-inner">
     <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
-    <a href="index.html" class="header-cta">← Retour au site</a>
+    <div style="display:flex; gap:10px;">
+      <a href="index.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">← Site</a>
+      <button id="logout-btn" class="header-cta" style="width:auto;">Se déconnecter</button>
+    </div>
   </div>
 </header>
-
-<div id="lock-screen" class="gen-wrap">
-  <div class="passcode-box">
-    <div class="eyebrow">Outil interne</div>
-    <h1 style="font-size:24px; margin-top:6px;">Accès protégé</h1>
-    <p style="color:var(--ink-light); font-size:14px; margin-top:10px;">Entre ton code pour accéder au générateur de plannings.</p>
-    <input type="password" inputmode="numeric" id="passcode-input" placeholder="Code" maxlength="12">
-    <div id="passcode-error" style="color:var(--terracotta-dark); font-size:12.5px; height:16px;"></div>
-    <div><button id="unlock-btn" style="width:auto;">Déverrouiller</button></div>
-  </div>
-</div>
 
 <div id="app" class="gen-wrap" style="display:none;"></div>
 
@@ -34,12 +26,12 @@
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
 <script src="data-exercices.js"></script>
 <script src="data-recettes.js"></script>
 <script src="generateur.js"></script>
 <script>
-const COACH_PASSCODE = "4127";
-
 const ZONE_LABELS = { torse:"Torse / Poitrine", dos:"Dos", epaules:"Épaules", bras:"Bras", abdos:"Abdos", jambes:"Jambes", fessiers:"Fessiers", full_body:"Full body" };
 const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:"Poignets", hanches:"Hanches", chevilles:"Chevilles" };
 const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
@@ -54,35 +46,28 @@ const REPAS_DEFAUT = {
   endurance: ["petit_dej","dejeuner","gouter","diner"],
 };
 
-// ---- Verrouillage ----
-function tryUnlock(){
-  const input = document.getElementById("passcode-input");
-  if (input.value === COACH_PASSCODE){
-    sessionStorage.setItem("gen-unlocked", "1");
-    document.getElementById("lock-screen").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    renderForm();
-  } else {
-    document.getElementById("passcode-error").textContent = "Code incorrect.";
-    input.value = "";
-    input.focus();
+let clienteActuelleId = null;
+let dernierResultat = null; // { client, planSport, planRepas, liste, horaire }
+
+// ---- Authentification ----
+async function verifierSession(){
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session){
+    window.location.href = "login.html";
+    return;
   }
-}
-document.getElementById("unlock-btn").addEventListener("click", tryUnlock);
-document.getElementById("passcode-input").addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
-if (sessionStorage.getItem("gen-unlocked") === "1"){
-  document.getElementById("lock-screen").style.display = "none";
   document.getElementById("app").style.display = "block";
   renderForm();
+  chargerListeClientes();
 }
+verifierSession();
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  window.location.href = "login.html";
+});
 
 // ---- Construction du formulaire ----
-function chipGroup(name, options, labels){
-  return `<div class="checkbox-list" data-group="${name}">
-    ${options.map(v => `<label class="checkbox-chip"><input type="checkbox" value="${v}"> ${labels[v]}</label>`).join("")}
-  </div>`;
-}
-
 function exercicesParZone(){
   const parZone = {};
   EXERCICES.forEach(e => { (parZone[e.zone] = parZone[e.zone] || []).push(e); });
@@ -110,6 +95,12 @@ function renderForm(){
       <h1 style="font-size:26px; margin-top:6px;">Générateur de planning</h1>
       <p>Rentre les infos de la personne, génère son planning sport + repas + liste de courses.</p>
     </div>
+
+    <fieldset>
+      <legend>Mes clientes</legend>
+      <div id="liste-clientes" style="font-size:13.5px; color:var(--ink-light);">Chargement…</div>
+      <button type="button" id="nouvelle-fiche-btn" class="btn-ghost" style="width:auto; margin-top:12px;">+ Nouvelle fiche</button>
+    </fieldset>
 
     <form id="gen-form">
       <fieldset>
@@ -198,10 +189,15 @@ function renderForm(){
     document.querySelectorAll('input[name="repas"]').forEach(cb => { cb.checked = defaut.includes(cb.value); });
   });
   document.getElementById("gen-form").addEventListener("submit", e => { e.preventDefault(); genererEtAfficher(); });
+  document.getElementById("nouvelle-fiche-btn").addEventListener("click", nouvelleFiche);
 }
 
 function valeursCochees(name){
   return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+}
+function cocherValeurs(name, valeurs){
+  const set = new Set(valeurs || []);
+  document.querySelectorAll(`input[name="${name}"]`).forEach(cb => { cb.checked = set.has(cb.value); });
 }
 function timeToMinutes(hhmm){
   if (!hhmm) return null;
@@ -229,6 +225,8 @@ function collecterClient(){
     materiel: document.getElementById("f-materiel").value,
     materielTier: MATERIEL_TIER[document.getElementById("f-materiel").value],
     momentPrefere: document.getElementById("f-moment").value,
+    heureReveilRaw: document.getElementById("f-heure-reveil").value,
+    heureDebutTravailRaw: document.getElementById("f-heure-travail").value,
     heureReveil: timeToMinutes(document.getElementById("f-heure-reveil").value),
     heureDebutTravail: timeToMinutes(document.getElementById("f-heure-travail").value),
     trajetDomicileSalle: Number(document.getElementById("f-trajet-ds").value) || 0,
@@ -242,6 +240,102 @@ function collecterClient(){
   };
 }
 
+function remplirFormulaire(c){
+  document.getElementById("f-prenom").value = c.prenom || "";
+  document.getElementById("f-age").value = c.age || 30;
+  document.getElementById("f-sexe").value = c.sexe || "femme";
+  document.getElementById("f-objectif").value = c.objectif || "perte_poids";
+  document.getElementById("f-poids-actuel").value = c.poids_actuel || 70;
+  document.getElementById("f-poids-souhaite").value = c.poids_souhaite || "";
+  document.getElementById("f-niveau").value = c.niveau || "debutant";
+  document.getElementById("f-type-effort").value = c.type_effort || "mix";
+  document.getElementById("f-duree").value = c.duree_seance || 45;
+  document.getElementById("f-lieu").value = c.lieu || "salle";
+  document.getElementById("f-materiel").value = c.materiel || "aucun";
+  document.getElementById("f-moment").value = c.moment_prefere || "matin";
+  document.getElementById("horaire-fields").style.display = (c.moment_prefere === "matin") ? "grid" : "none";
+  document.getElementById("f-heure-reveil").value = c.heure_reveil || "06:30";
+  document.getElementById("f-heure-travail").value = c.heure_debut_travail || "09:00";
+  document.getElementById("f-trajet-ds").value = c.trajet_domicile_salle || 0;
+  document.getElementById("f-trajet-st").value = c.trajet_salle_travail || 0;
+  document.getElementById("f-vegetarien").checked = !!c.vegetarien;
+  document.getElementById("f-vegan").checked = !!c.vegan;
+  document.getElementById("f-sans-gluten").checked = !!c.sans_gluten;
+  document.getElementById("f-sans-lactose").checked = !!c.sans_lactose;
+  cocherValeurs("zone", c.zones_prioritaires);
+  cocherValeurs("sante", c.problemes_sante);
+  cocherValeurs("exclude-exo", c.exclude_exercices);
+  cocherValeurs("jour", c.jours_dispo);
+  cocherValeurs("aliment", c.aliments_evites);
+  cocherValeurs("repas", c.repas_inclus && c.repas_inclus.length ? c.repas_inclus : ["petit_dej","dejeuner","diner"]);
+}
+
+function nouvelleFiche(){
+  clienteActuelleId = null;
+  document.getElementById("gen-form").reset();
+  cocherValeurs("repas", ["petit_dej","dejeuner","diner"]);
+  document.getElementById("horaire-fields").style.display = "grid";
+  document.getElementById("resultats").innerHTML = "";
+  window.scrollTo(0,0);
+}
+
+// ---- Sauvegarde Supabase ----
+async function chargerListeClientes(){
+  const box = document.getElementById("liste-clientes");
+  const { data, error } = await supabaseClient.from("clientes").select("id, prenom, updated_at").order("updated_at", { ascending:false });
+  if (error){ box.textContent = "Erreur de chargement : " + error.message; return; }
+  if (!data.length){ box.textContent = "Aucune fiche enregistrée pour l'instant."; return; }
+  box.innerHTML = `<div class="checkbox-list">${data.map(c => `
+    <button type="button" class="checkbox-chip cliente-item" data-id="${c.id}" style="cursor:pointer;">
+      ${c.prenom} <span style="color:var(--ink-light); font-size:11px;">— ${new Date(c.updated_at).toLocaleDateString("fr-FR")}</span>
+    </button>
+  `).join("")}</div>`;
+  box.querySelectorAll(".cliente-item").forEach(btn => btn.addEventListener("click", () => chargerCliente(btn.dataset.id)));
+}
+
+async function chargerCliente(id){
+  const { data, error } = await supabaseClient.from("clientes").select("*").eq("id", id).single();
+  if (error){ alert("Erreur de chargement : " + error.message); return; }
+  clienteActuelleId = data.id;
+  remplirFormulaire(data);
+  document.getElementById("resultats").innerHTML = "";
+  if (data.dernier_planning_sport && data.dernier_planning_repas){
+    afficherResultats(collecterClient(), data.dernier_planning_sport, data.dernier_planning_repas, data.derniere_liste_courses || [], placementHoraire(collecterClient()));
+  }
+  window.scrollTo(0,0);
+}
+
+async function enregistrerFiche(){
+  if (!dernierResultat){ alert("Génère d'abord un planning avant d'enregistrer."); return; }
+  const { client, planSport, planRepas, liste } = dernierResultat;
+  const row = {
+    prenom: client.prenom, age: client.age, sexe: client.sexe, objectif: client.objectif,
+    poids_actuel: client.poidsActuel, poids_souhaite: client.poidsSouhaite,
+    niveau: client.niveau, type_effort: client.typeEffort,
+    zones_prioritaires: client.zonesPrioritaires, problemes_sante: client.problemesSante,
+    exclude_exercices: client.excludeIds, jours_dispo: client.joursDispo,
+    duree_seance: client.dureeSeance, lieu: client.lieu, materiel: client.materiel,
+    moment_prefere: client.momentPrefere, heure_reveil: client.heureReveilRaw, heure_debut_travail: client.heureDebutTravailRaw,
+    trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail,
+    vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
+    aliments_evites: client.alimentsEvites, repas_inclus: client.repasInclus,
+    dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
+  };
+  const btn = document.getElementById("enregistrer-btn");
+  btn.disabled = true; btn.textContent = "Enregistrement…";
+  let result;
+  if (clienteActuelleId){
+    result = await supabaseClient.from("clientes").update(row).eq("id", clienteActuelleId).select().single();
+  } else {
+    result = await supabaseClient.from("clientes").insert(row).select().single();
+  }
+  btn.disabled = false; btn.textContent = "💾 Enregistrer cette fiche";
+  if (result.error){ alert("Erreur d'enregistrement : " + result.error.message); return; }
+  clienteActuelleId = result.data.id;
+  chargerListeClientes();
+}
+
+// ---- Génération ----
 function genererEtAfficher(){
   const client = collecterClient();
   if (!client.joursDispo.length){ alert("Sélectionne au moins un jour disponible."); return; }
@@ -251,10 +345,15 @@ function genererEtAfficher(){
   const planRepas = genererPlanningRepas(client);
   const liste = genererListeCourses(planRepas);
   const horaire = placementHoraire(client);
+  dernierResultat = { client, planSport, planRepas, liste };
+  afficherResultats(client, planSport, planRepas, liste, horaire);
+}
 
+function afficherResultats(client, planSport, planRepas, liste, horaire){
   const resultats = document.getElementById("resultats");
   resultats.innerHTML = `
     <div class="results-actions">
+      <button id="enregistrer-btn">💾 Enregistrer cette fiche</button>
       <button id="regenerer-btn" class="btn-ghost">↻ Régénérer</button>
       <button id="print-btn" class="btn-ghost">🖨 Imprimer / PDF</button>
     </div>
@@ -300,6 +399,7 @@ function genererEtAfficher(){
     </div>
   `;
 
+  document.getElementById("enregistrer-btn").addEventListener("click", enregistrerFiche);
   document.getElementById("regenerer-btn").addEventListener("click", genererEtAfficher);
   document.getElementById("print-btn").addEventListener("click", () => window.print());
   resultats.scrollIntoView({ behavior:"smooth" });
