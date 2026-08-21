@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coaching Sur-Mesure — Sport & nutrition, pensés pour toi chaque semaine</title>
+<meta name="description" content="Chaque semaine, un programme sport et nutrition pensé pour toi, ajusté autant de fois que nécessaire. Tu n'as plus qu'à suivre.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+    <a href="#form" class="header-cta">Réserver mon appel</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Coaching sport & nutrition</div>
+    <h1>Ton programme, pensé pour toi<br>chaque semaine.</h1>
+    <p class="lead">Tu n'as plus qu'à suivre.</p>
+    <a href="#form" class="btn-primary">Je réserve mon appel découverte →</a>
+  </div>
+</section>
+
+<section class="empathy">
+  <div class="wrap section-pad">
+    <p class="big-line">Tu as déjà tout essayé.</p>
+    <p>Les applis, les programmes tout faits, les bonnes résolutions du lundi. Le problème n'a jamais été ta motivation — c'est que <strong>personne n'a pris en charge la réflexion à ta place.</strong></p>
+    <p>Tu n'as pas besoin d'un énième plan à décortiquer toi-même. Tu as besoin que quelqu'un s'en occupe, et que tu n'aies plus qu'à ouvrir ton programme et le suivre.</p>
+  </div>
+</section>
+
+<section class="deliverable">
+  <div class="wrap section-pad">
+    <h2>Chaque semaine, tu reçois</h2>
+    <div class="cards">
+      <div class="item-card">
+        <div class="num">01</div>
+        <h3>Ton plan sport</h3>
+        <p>Adapté à ton emploi du temps réel, pas à un idéal théorique.</p>
+      </div>
+      <div class="item-card">
+        <div class="num">02</div>
+        <h3>Tes recettes batch cooking</h3>
+        <p>Prêtes à préparer, sans réfléchir à "qu'est-ce que je mange cette semaine".</p>
+      </div>
+      <div class="item-card">
+        <div class="num">03</div>
+        <h3>Ta liste de courses</h3>
+        <p>Tu coches, tu achètes, c'est fait.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="how">
+  <div class="wrap section-pad">
+    <h2>Comment ça démarre</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>2 minutes</h3>
+          <p>Tu réponds à 6 questions essentielles. Rien de plus.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>15 minutes</h3>
+          <p>On s'appelle, je cerne ce qui compte vraiment pour toi.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>48 heures</h3>
+          <p>Ton premier programme arrive, prêt à suivre.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="guarantee">
+  <div class="wrap section-pad">
+    <div class="guarantee-card">
+      <div class="guarantee-mark">✓</div>
+      <h2>La garantie</h2>
+      <p>On ajuste ton programme autant de fois que nécessaire, sans limite, jusqu'à ce qu'il te corresponde parfaitement.</p>
+    </div>
+  </div>
+</section>
+
+<section class="pricing">
+  <div class="wrap section-pad">
+    <h2>Un accompagnement sur-mesure</h2>
+    <p class="pricing-sub">Un suivi hebdomadaire complet, ajusté autant de fois que nécessaire jusqu'à ce qu'il te corresponde parfaitement.</p>
+    <div class="price-tag">
+      <span class="price-amount">100€</span>
+      <span class="price-period">/ mois</span>
+    </div>
+    <p class="price-note">Sans engagement — garantie ajustement illimité</p>
+  </div>
+</section>
+
+<section class="form-section" id="form">
+  <div class="wrap section-pad">
+    <div id="app"></div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <p>Coaching Sur-Mesure — Sport & nutrition, sur-mesure, sans y penser.</p>
+    <p class="footer-links"><a href="mailto:zooecoach@gmail.com">zooecoach@gmail.com</a></p>
+    <p><a href="questionnaire.html">Déjà cliente ? Accède à ton bilan →</a></p>
+  </div>
+</footer>
+
+<script>
+  // Scroll-reveal for sections
+  const sections = document.querySelectorAll('section');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if(entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.12 });
+  sections.forEach(s => observer.observe(s));
+
+  // ---- Mini intake form (6 questions) ----
+  const WEB3FORMS_KEY = "cae832a3-8f1c-45bd-9341-9e95689a3f1f";
+  const COACH_EMAIL = "zooecoach@gmail.com";
+
+  let answers = {};
+  let submitted = false;
+  let emailStatus = 'pending';
+
+  function renderForm(){
+    const app = document.getElementById('app');
+    if(submitted){
+      if(emailStatus === 'sent'){
+        app.innerHTML = `
+          <div class="thankyou">
+            <div class="mark">✓</div>
+            <h2>C'est envoyé !</h2>
+            <p>Je te recontacte très vite pour notre appel découverte de 15 minutes.<br>En attendant, respire — le plus dur (te lancer) est fait.</p>
+          </div>`;
+      } else {
+        const mailto = buildMailto();
+        app.innerHTML = `
+          <div class="thankyou">
+            <div class="mark" style="color:var(--terracotta);">!</div>
+            <h2>Presque !</h2>
+            <p>L'envoi automatique n'a pas fonctionné. Clique ci-dessous pour m'envoyer tes réponses directement :</p>
+            <a href="${mailto}" target="_blank" rel="noopener noreferrer" class="btn-fallback">📧 M'envoyer mes réponses</a>
+          </div>`;
+      }
+      return;
+    }
+
+    app.innerHTML = `
+      <div class="form-intro">
+        <h2>On démarre ?</h2>
+        <p>6 questions, 2 minutes. Le reste, on le voit ensemble à l'appel.</p>
+      </div>
+      <div class="field">
+        <label class="q">Ton prénom</label>
+        <input type="text" id="f-prenom" value="${answers.prenom||''}">
+      </div>
+      <div class="field">
+        <label class="q">Ton email</label>
+        <input type="email" id="f-email" value="${answers.email||''}">
+      </div>
+      <div class="field">
+        <label class="q">Ton téléphone</label>
+        <input type="tel" id="f-tel" value="${answers.tel||''}">
+      </div>
+      <div class="field">
+        <label class="q">En une phrase, qu'est-ce qui te pousse à commencer aujourd'hui ?</label>
+        <textarea id="f-motivation">${answers.motivation||''}</textarea>
+      </div>
+      <div class="field">
+        <label class="q">As-tu des contre-indications médicales, blessures ou allergies à signaler ?</label>
+        <div class="hint">Nécessaire pour ta sécurité — écris "aucune" si ce n'est pas le cas</div>
+        <textarea id="f-sante">${answers.sante||''}</textarea>
+      </div>
+      <div class="field">
+        <label class="q">Plutôt matin, midi ou soir ?</label>
+        <div class="choices" id="f-moment">
+          ${['Matin','Midi','Soir'].map(m => `<div class="choice ${answers.moment===m?'selected':''}" data-value="${m}">${m}</div>`).join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label class="check-row">
+          <input type="checkbox" id="f-rgpd" ${answers.rgpd?'checked':''}>
+          <span>J'autorise le traitement de mes données personnelles dans le cadre de cet accompagnement (RGPD)</span>
+        </label>
+      </div>
+      <button id="submit-btn">Je réserve mon appel découverte</button>
+    `;
+
+    document.getElementById('f-prenom').addEventListener('input', e => answers.prenom = e.target.value);
+    document.getElementById('f-email').addEventListener('input', e => answers.email = e.target.value);
+    document.getElementById('f-tel').addEventListener('input', e => answers.tel = e.target.value);
+    document.getElementById('f-motivation').addEventListener('input', e => answers.motivation = e.target.value);
+    document.getElementById('f-sante').addEventListener('input', e => answers.sante = e.target.value);
+    document.getElementById('f-rgpd').addEventListener('change', e => answers.rgpd = e.target.checked);
+    document.querySelectorAll('#f-moment .choice').forEach(chip => {
+      chip.addEventListener('click', () => { answers.moment = chip.dataset.value; renderForm(); });
+    });
+    document.getElementById('submit-btn').addEventListener('click', onSubmit);
+  }
+
+  function buildPlainText(){
+    return `Nouvelle prospect — Coaching Sur-Mesure\n\n` +
+      `Prénom : ${answers.prenom||''}\n` +
+      `Email : ${answers.email||''}\n` +
+      `Téléphone : ${answers.tel||''}\n` +
+      `Motivation : ${answers.motivation||''}\n` +
+      `Santé / contre-indications : ${answers.sante||''}\n` +
+      `Moment préféré : ${answers.moment||''}\n` +
+      `RGPD : ${answers.rgpd ? 'Oui' : 'Non'}\n`;
+  }
+
+  function buildMailto(){
+    const subject = `Nouvelle prospect — ${answers.prenom||'Sans nom'}`;
+    return `mailto:${COACH_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildPlainText())}`;
+  }
+
+  async function onSubmit(){
+    if(!answers.prenom || !answers.email){
+      alert("Merci de renseigner au moins ton prénom et ton email.");
+      return;
+    }
+    if(!answers.rgpd){
+      alert("Merci de cocher la case RGPD pour continuer.");
+      return;
+    }
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Envoi en cours...';
+
+    try{
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_KEY,
+          subject: `Nouvelle prospect — ${answers.prenom}`,
+          from_name: `Coaching Sur-Mesure — ${answers.prenom}`,
+          email: COACH_EMAIL,
+          message: buildPlainText(),
+        })
+      });
+      const data = await res.json();
+      emailStatus = (res.ok && data.success) ? 'sent' : 'failed';
+    } catch(e){
+      emailStatus = 'failed';
+    }
+    submitted = true;
+    renderForm();
+  }
+
+  renderForm();
+</script>
+</body>
+</html>

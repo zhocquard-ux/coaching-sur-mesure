@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Questionnaire Bilan Client — Coaching Sur-Mesure</title>
+<meta name="description" content="Le bilan complet qui permet de construire ton programme sport et nutrition sur-mesure.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+    <a href="index.html" class="header-cta">← Retour au site</a>
+  </div>
+</header>
+
+<div class="q-wrap" id="app"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a href="index.html" class="footer-back">← Retour au site</a>
+  </div>
+</footer>
+
+<script>
+const SECTIONS = [
+  { title: "Profil & État civil", fields: [
+      {id:"prenom", q:"Prénom & Nom", type:"text", required:true},
+      {id:"age", q:"Âge", type:"number"},
+      {id:"email", q:"Email", type:"email", required:true},
+      {id:"telephone", q:"Téléphone", type:"tel"},
+      {id:"canal", q:"Réseau préféré pour le suivi", type:"choice", options:["Notion","WhatsApp","Email","Instagram","Application"]},
+  ]},
+  { title: "Données physiques", fields: [
+      {id:"poids_actuel", q:"Poids actuel (kg)", type:"number"},
+      {id:"taille", q:"Taille (cm)", type:"number"},
+      {id:"poids_objectif", q:"Poids objectif (kg)", type:"number", hint:"si pertinent"},
+      {id:"tour_taille", q:"Tour de taille / hanches (cm)", type:"number", hint:"optionnel, utile pour le suivi perte de gras"},
+  ]},
+  { title: "Rythme & Créneaux d'entraînement", sub: "Pour construire ton calendrier d'entraînement.", fields: [
+      {id:"moment_forme", q:"Moment de meilleure forme", type:"choice", options:["Matin","Midi","Fin d'après-midi","Soir","Très variable"]},
+      {id:"jours_dispo", q:"Jours disponibles dans la semaine", type:"text"},
+      {id:"duree_seance", q:"Durée disponible par séance (min)", type:"number"},
+      {id:"lieu", q:"Lieu d'entraînement", type:"choice", options:["Salle de sport","Maison","Extérieur","Mixte"]},
+      {id:"materiel", q:"Matériel disponible à la maison", type:"choice", options:["Aucun","Quelques accessoires","Équipement complet"]},
+  ]},
+  { title: "Objectifs & Zones cibles", fields: [
+      {id:"objectif", q:"Objectif principal", type:"choice", options:["Perte de poids","Tonus musculaire","Énergie au quotidien","Reprise de routine","Prise de masse","Endurance"]},
+      {id:"zones", q:"Zones prioritaires", type:"multichoice", options:["Bras","Dos","Fessiers","Jambes","Abdos","Épaules","Full body"]},
+      {id:"effort", q:"Type d'effort souhaité", type:"choice", options:["Cardio uniquement","Renforcement uniquement","Mix cardio + renfo"]},
+  ]},
+  { title: "Nutrition & Préférences repas", sub: "Pour construire tes menus et listes de courses.", fields: [
+      {id:"regime", q:"Régime alimentaire", type:"choice", options:["Aucun","Végétarien","Végan","Sans gluten","Autre"]},
+      {id:"allergies", q:"Allergies / intolérances", type:"textarea"},
+      {id:"aliments_garder", q:"Aliments à garder absolument", type:"textarea"},
+      {id:"aliments_eviter", q:"Aliments à éviter / détestés", type:"textarea"},
+      {id:"nb_repas", q:"Nombre de repas / collations par jour", type:"number"},
+      {id:"repas_exterieur", q:"Fréquence de repas à l'extérieur", type:"choice", options:["Jamais","1-2 fois par semaine","3-5 fois par semaine","Presque tous les jours"]},
+      {id:"budget", q:"Budget courses hebdomadaire (€)", type:"number"},
+  ]},
+  { title: "Santé, Pathologies & Douleurs", fields: [
+      {id:"sante", q:"Maladie chronique, souci cardiaque ou respiratoire", type:"textarea"},
+      {id:"blessures", q:"Blessures passées / actuelles ou douleurs récurrentes", type:"textarea"},
+      {id:"contre_indications", q:"Mouvements ou charges déconseillés par un médecin", type:"textarea"},
+      {id:"certif", q:"Je certifie être apte à la pratique sportive", type:"checkbox"},
+  ]},
+  { title: "Mode de vie", fields: [
+      {id:"travail", q:"Type de travail", type:"choice", options:["Sédentaire (bureau)","Debout / actif","Physique / manuel"]},
+      {id:"horaires", q:"Horaires de travail", type:"choice", options:["Fixes tous les jours","Variables selon les semaines","Télétravail","Je ne travaille pas actuellement"]},
+      {id:"sommeil", q:"Sommeil moyen par nuit (h)", type:"number"},
+      {id:"stress", q:"Niveau de stress perçu (1 à 10)", type:"number"},
+      {id:"hydratation", q:"Hydratation quotidienne moyenne (L)", type:"number"},
+      {id:"tabac_alcool", q:"Tabac / alcool", type:"text"},
+  ]},
+  { title: "Niveau & Préférences d'exercices", fields: [
+      {id:"niveau", q:"Niveau actuel", type:"choice", options:["Débutant(e)","Intermédiaire","Avancé(e)"]},
+      {id:"exos_aimes", q:"Exercices que tu adores", type:"textarea"},
+      {id:"exos_evites", q:"Exercices que tu préfères éviter", type:"textarea"},
+  ]},
+  { title: "Historique & Motivation", fields: [
+      {id:"historique", q:"As-tu déjà suivi un coaching ? Pourquoi ça n'a pas fonctionné ?", type:"textarea"},
+      {id:"frein", q:"Ton principal frein selon toi", type:"text", hint:"temps, motivation, connaissance…"},
+      {id:"motivation", q:"Ton niveau de motivation actuel (1 à 10)", type:"number"},
+  ]},
+  { title: "Préférences de suivi & Consentement", fields: [
+      {id:"freq_suivi", q:"Fréquence de communication souhaitée", type:"choice", options:["Hebdomadaire","Bi-hebdomadaire"]},
+      {id:"jour_envoi", q:"Jour préféré pour recevoir le programme", type:"choice", options:["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"]},
+      {id:"rgpd", q:"J'autorise le traitement de mes données personnelles dans le cadre de ce suivi (RGPD)", type:"checkbox", required:true},
+      {id:"droit_image", q:"J'autorise l'utilisation de mes photos de progression à des fins de communication (facultatif)", type:"checkbox"},
+  ]},
+];
+
+const COACH_EMAIL = "zooecoach@gmail.com";
+const WEB3FORMS_KEY = "cae832a3-8f1c-45bd-9341-9e95689a3f1f";
+
+let state = { step: -1, answers: {} };
+let emailStatus = 'pending'; // 'pending' | 'sent' | 'failed'
+
+function renderChoice(field){
+  const val = state.answers[field.id];
+  const isMulti = field.type === 'multichoice';
+  const selected = isMulti ? (val || []) : val;
+  return `<div class="choices" data-field="${field.id}" data-multi="${isMulti}">
+    ${field.options.map(opt => {
+      const isSel = isMulti ? selected.includes(opt) : selected === opt;
+      return `<div class="choice ${isSel ? 'selected '+(isMulti?'multi':'') : ''}" data-value="${opt}">${opt}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderField(field){
+  const val = state.answers[field.id] ?? '';
+  let inner = '';
+  if(field.type === 'text' || field.type === 'email' || field.type === 'tel' || field.type === 'number'){
+    inner = `<input type="${field.type}" data-field="${field.id}" value="${val}">`;
+  } else if(field.type === 'textarea'){
+    inner = `<textarea data-field="${field.id}">${val}</textarea>`;
+  } else if(field.type === 'choice' || field.type === 'multichoice'){
+    inner = renderChoice(field);
+  } else if(field.type === 'checkbox'){
+    return `<div class="field">
+      <label class="check-row">
+        <input type="checkbox" data-field="${field.id}" ${val ? 'checked':''}>
+        <span>${field.q}${field.required ? ' *' : ''}</span>
+      </label>
+    </div>`;
+  }
+  return `<div class="field">
+    <label class="q">${field.q}${field.required ? ' *' : ''}</label>
+    ${field.hint ? `<div class="hint">${field.hint}</div>` : ''}
+    ${inner}
+  </div>`;
+}
+
+function renderIntro(){
+  return `
+  <div class="form-intro">
+    <div class="eyebrow">Coaching sport & nutrition</div>
+    <h1 style="font-size:32px; margin-top:6px;">Questionnaire<br>Bilan Client</h1>
+    <p style="font-style:italic; margin-top:8px;">Ce questionnaire permet de créer ton programme sur-mesure — entraînement,<br>nutrition et suivi, adaptés à ton objectif, ton emploi du temps et ta santé.</p>
+  </div>
+  <div class="card" style="text-align:center;">
+    <p style="color:var(--ink-light); font-size:14px; line-height:1.7;">Prends le temps d'y répondre avec sincérité.<br>Plus les réponses sont précises, plus ton programme sera juste.<br><br>Ça prend environ <strong style="color:var(--ink)">8 à 10 minutes</strong>.</p>
+    <div class="intro-actions">
+      <button class="btn-primary" id="start-btn">Commencer →</button>
+    </div>
+  </div>
+  `;
+}
+
+function renderSection(idx){
+  const s = SECTIONS[idx];
+  const pct = Math.round(((idx+1) / (SECTIONS.length+1)) * 100);
+  return `
+  <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+  <div class="progress-label">Étape ${idx+1} / ${SECTIONS.length}</div>
+  <div class="card">
+    <div class="section-num">${String(idx+1).padStart(2,'0')}</div>
+    <div class="section-title">${s.title}</div>
+    ${s.sub ? `<div class="section-sub">${s.sub}</div>` : ''}
+    ${s.fields.map(renderField).join('')}
+    <div class="nav-row">
+      <button class="btn-ghost" id="back-btn" ${idx===0?'disabled':''}>← Retour</button>
+      <button id="next-btn">${idx===SECTIONS.length-1 ? 'Vérifier mes réponses' : 'Continuer →'}</button>
+    </div>
+  </div>`;
+}
+
+function renderReview(){
+  let rows = '';
+  SECTIONS.forEach(s => {
+    s.fields.forEach(f => {
+      let v = state.answers[f.id];
+      if(v === undefined || v === '' || v === null || (Array.isArray(v) && v.length===0)) return;
+      if(f.type === 'checkbox') v = v ? 'Oui' : 'Non';
+      if(Array.isArray(v)) v = v.join(', ');
+      rows += `<div class="detail-row"><span class="k">${f.q}</span>${v}</div>`;
+    });
+  });
+  return `
+  <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+  <div class="progress-label">Vérification</div>
+  <div class="card">
+    <div class="section-title">Vérifie tes réponses</div>
+    <div class="section-sub">Tu peux revenir en arrière pour corriger avant d'envoyer.</div>
+    ${rows}
+    <div class="nav-row">
+      <button class="btn-ghost" id="back-btn">← Retour</button>
+      <button id="submit-btn">Envoyer mes réponses</button>
+    </div>
+  </div>`;
+}
+
+function renderThankyou(){
+  if(emailStatus === 'sent'){
+    return `
+    <div class="thankyou">
+      <div class="mark">✓</div>
+      <h2>Merci !</h2>
+      <p>Tes réponses ont bien été envoyées à ton coach.<br>Il/elle revient vers toi très vite avec ton programme personnalisé.</p>
+    </div>`;
+  }
+  const mailtoLink = buildMailtoLink(state.answers);
+  return `
+  <div class="thankyou">
+    <div class="mark" style="color:var(--terracotta);">!</div>
+    <h2>Presque !</h2>
+    <p>L'envoi automatique n'a pas fonctionné cette fois.<br>Utilise l'une des options ci-dessous pour transmettre tes réponses :</p>
+    <div style="margin-top:20px;">
+      <a href="${mailtoLink}" target="_blank" rel="noopener noreferrer" class="btn-fallback">📧 Envoyer par email</a>
+    </div>
+    <p style="color:var(--ink-light); margin-top:22px; font-size:13px; font-style:italic;">Ça ne s'ouvre pas ?<br>
+      <a href="#" id="copy-answers-link">Copie tes réponses ici</a> et colle-les dans un message ou un email à ton coach.
+    </p>
+    <div id="copy-feedback" style="font-size:12px; color:var(--sage); margin-top:6px; height:16px;"></div>
+  </div>`;
+}
+
+function validateStep(idx){
+  const s = SECTIONS[idx];
+  for(const f of s.fields){
+    if(f.required){
+      const v = state.answers[f.id];
+      if(f.type === 'checkbox' && !v) { alert(`Merci de cocher : "${f.q}"`); return false; }
+      if(f.type !== 'checkbox' && (!v || v === '')) { alert(`Merci de répondre à : "${f.q}"`); return false; }
+    }
+  }
+  return true;
+}
+
+function buildMailtoLink(answers){
+  const prenom = answers.prenom || 'Client(e)';
+  const subject = `Nouveau Bilan Client — ${prenom}`;
+  return `mailto:${COACH_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(buildPlainText(answers))}`;
+}
+
+function buildPlainText(answers){
+  let text = `Nouvelles réponses au Questionnaire Bilan Client\n`;
+  text += `Reçu le ${new Date().toLocaleString('fr-FR')}\n\n`;
+  SECTIONS.forEach(s => {
+    let sectionLines = '';
+    s.fields.forEach(f => {
+      let v = answers[f.id];
+      if(v === undefined || v === '' || v === null || (Array.isArray(v) && v.length===0)) return;
+      if(f.type === 'checkbox') v = v ? 'Oui' : 'Non';
+      if(Array.isArray(v)) v = v.join(', ');
+      sectionLines += `${f.q} : ${v}\n`;
+    });
+    if(sectionLines){ text += `— ${s.title} —\n${sectionLines}\n`; }
+  });
+  return text;
+}
+
+async function submitForm(){
+  const prenom = state.answers.prenom || 'Client(e)';
+  try{
+    const res = await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_KEY,
+        subject: `Nouveau Bilan Client — ${prenom}`,
+        from_name: `Questionnaire Bilan Client — ${prenom}`,
+        email: COACH_EMAIL,
+        message: buildPlainText(state.answers),
+      })
+    });
+    const data = await res.json();
+    emailStatus = (res.ok && data.success) ? 'sent' : 'failed';
+  } catch(e){
+    emailStatus = 'failed';
+  }
+  state.step = SECTIONS.length + 1;
+  render();
+}
+
+function bindFormEvents(root){
+  root.querySelectorAll('input[type=text], input[type=email], input[type=tel], input[type=number], textarea').forEach(elm => {
+    elm.addEventListener('input', e => { state.answers[elm.dataset.field] = elm.value; });
+  });
+  root.querySelectorAll('input[type=checkbox]').forEach(elm => {
+    elm.addEventListener('change', e => { state.answers[elm.dataset.field] = elm.checked; });
+  });
+  root.querySelectorAll('.choices').forEach(group => {
+    const fieldId = group.dataset.field;
+    const isMulti = group.dataset.multi === 'true';
+    group.querySelectorAll('.choice').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const value = chip.dataset.value;
+        if(isMulti){
+          let arr = state.answers[fieldId] || [];
+          if(arr.includes(value)) arr = arr.filter(v => v !== value);
+          else arr = [...arr, value];
+          state.answers[fieldId] = arr;
+        } else {
+          state.answers[fieldId] = state.answers[fieldId] === value ? '' : value;
+        }
+        render();
+      });
+    });
+  });
+
+  const startBtn = root.querySelector('#start-btn');
+  if(startBtn) startBtn.addEventListener('click', () => { state.step = 0; render(); });
+
+  const backBtn = root.querySelector('#back-btn');
+  if(backBtn) backBtn.addEventListener('click', () => { state.step = Math.max(0, state.step - 1); render(); });
+
+  const nextBtn = root.querySelector('#next-btn');
+  if(nextBtn) nextBtn.addEventListener('click', () => {
+    if(!validateStep(state.step)) return;
+    state.step += 1;
+    render();
+  });
+
+  const submitBtn = root.querySelector('#submit-btn');
+  if(submitBtn) submitBtn.addEventListener('click', () => {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Envoi en cours...';
+    submitForm();
+  });
+}
+
+function render(){
+  const app = document.getElementById('app');
+  let html = '';
+  if(state.step === -1) html = renderIntro();
+  else if(state.step >= 0 && state.step < SECTIONS.length) html = renderSection(state.step);
+  else if(state.step === SECTIONS.length) html = renderReview();
+  else html = renderThankyou();
+  app.innerHTML = html;
+  bindFormEvents(app);
+  const copyLink = app.querySelector('#copy-answers-link');
+  if(copyLink){
+    copyLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const text = buildPlainText(state.answers);
+      const feedback = app.querySelector('#copy-feedback');
+      navigator.clipboard.writeText(text).then(() => {
+        feedback.textContent = 'Copié ! Colle-le maintenant dans un message à ton coach.';
+      }).catch(() => {
+        feedback.textContent = "La copie n'a pas fonctionné, contacte directement ton coach.";
+      });
+    });
+  }
+  window.scrollTo(0,0);
+}
+
+render();
+</script>
+</body>
+</html>
