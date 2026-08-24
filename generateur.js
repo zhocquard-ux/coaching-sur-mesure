@@ -39,17 +39,17 @@ function getSplit(n){
 
 function zonesPourJour(typeJour, zonesPrioritaires, indexFullBody){
   const rotationFullBody = [
-    ["torse","dos","jambes","abdos"],
-    ["epaules","bras","jambes","fessiers"],
-    ["dos","torse","fessiers","abdos"],
+    ["pectoraux","dos","quadriceps","abdominaux"],
+    ["epaules","biceps","triceps","fessiers","ischio_jambiers"],
+    ["dos","pectoraux","fessiers","obliques","mollets"],
   ];
   switch(typeJour){
-    case "Haut du corps": return ["torse","dos","epaules","bras"];
-    case "Bas du corps": return ["jambes","fessiers","abdos"];
-    case "Push": return ["torse","epaules","bras"];
-    case "Pull": return ["dos","bras"];
-    case "Jambes": return ["jambes","fessiers"];
-    case "Zone prioritaire": return zonesPrioritaires.length ? zonesPrioritaires : ["abdos"];
+    case "Haut du corps": return ["pectoraux","dos","epaules","biceps","triceps","trapezes","avant_bras"];
+    case "Bas du corps": return ["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs","abdominaux"];
+    case "Push": return ["pectoraux","epaules","triceps"];
+    case "Pull": return ["dos","trapezes","biceps"];
+    case "Jambes": return ["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs"];
+    case "Zone prioritaire": return zonesPrioritaires.length ? zonesPrioritaires : ["abdominaux"];
     default: return rotationFullBody[indexFullBody % rotationFullBody.length];
   }
 }
