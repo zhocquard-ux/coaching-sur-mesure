@@ -126,6 +126,8 @@ function renderForm(){
       <button type="button" id="nouvelle-fiche-btn" class="btn-ghost" style="width:auto; margin-top:12px;">+ Nouvelle fiche</button>
     </fieldset>
 
+    <div id="suivi-hebdo"></div>
+
     <form id="gen-form">
       <fieldset>
         <legend>Profil</legend>
@@ -349,6 +351,7 @@ function nouvelleFiche(){
   renderAlimentsLibres();
   document.getElementById("horaire-fields").style.display = "grid";
   document.getElementById("resultats").innerHTML = "";
+  document.getElementById("suivi-hebdo").innerHTML = "";
   window.scrollTo(0,0);
 }
 
@@ -375,7 +378,48 @@ async function chargerCliente(id){
   if (data.dernier_planning_sport && data.dernier_planning_repas){
     afficherResultats(collecterClient(), data.dernier_planning_sport, data.dernier_planning_repas, data.derniere_liste_courses || [], placementHoraire(collecterClient()));
   }
+  renderSuivi(data.id, data.prenom);
   window.scrollTo(0,0);
+}
+
+async function renderSuivi(id, prenom){
+  const box = document.getElementById("suivi-hebdo");
+  if (!id){ box.innerHTML = ""; return; }
+  const lien = `${window.location.origin}${window.location.pathname.replace("generateur.html","")}checkin.html?id=${id}&nom=${encodeURIComponent(prenom||"")}`;
+  const { data, error } = await supabaseClient.from("checkins").select("*").eq("cliente_id", id).order("created_at", { ascending:false });
+
+  box.innerHTML = `
+    <fieldset>
+      <legend>Suivi hebdomadaire</legend>
+      <div class="field">
+        <label class="q">Lien personnel à envoyer à ${prenom || "la cliente"} (WhatsApp, SMS...)</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="lien-suivi" value="${lien}" readonly style="font-size:12px;">
+          <button type="button" id="copier-lien-btn" class="btn-ghost" style="width:auto;">Copier</button>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        ${error ? `<p>Erreur de chargement des check-ins.</p>` :
+          !data.length ? `<p style="color:var(--ink-light); font-style:italic;">Aucun suivi reçu pour l'instant.</p>` :
+          data.map(c => `
+            <div class="detail-row">
+              <span class="k">${new Date(c.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}</span>
+              ${c.poids ? `Poids : ${c.poids} kg — ` : ""}Énergie : ${c.energie}/10 — Sport suivi : ${c.sport_suivi||0}% — Nutrition suivie : ${c.nutrition_suivi||0}%
+              ${c.difficultes ? `<br><em>Difficultés : ${c.difficultes}</em>` : ""}
+              ${c.commentaire ? `<br><em>${c.commentaire}</em>` : ""}
+            </div>
+          `).join("")
+        }
+      </div>
+    </fieldset>
+  `;
+  document.getElementById("copier-lien-btn").addEventListener("click", () => {
+    navigator.clipboard.writeText(lien).then(() => {
+      const btn = document.getElementById("copier-lien-btn");
+      btn.textContent = "Copié !";
+      setTimeout(() => { btn.textContent = "Copier"; }, 1500);
+    });
+  });
 }
 
 async function enregistrerFiche(){
@@ -406,6 +450,7 @@ async function enregistrerFiche(){
   if (result.error){ alert("Erreur d'enregistrement : " + result.error.message); return; }
   clienteActuelleId = result.data.id;
   chargerListeClientes();
+  renderSuivi(clienteActuelleId, result.data.prenom);
 }
 
 // ---- Génération ----

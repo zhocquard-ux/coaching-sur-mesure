@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi hebdomadaire — Coaching Sur-Mesure</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+  </div>
+</header>
+
+<div class="q-wrap" id="app"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner"><a href="index.html" class="footer-back">← Retour au site</a></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const clienteId = params.get("id");
+const prenom = params.get("nom") || "";
+
+function render(){
+  const app = document.getElementById("app");
+  if (!clienteId){
+    app.innerHTML = `<div class="card"><p>Lien invalide — demande à ton coach de te renvoyer ton lien personnel de suivi.</p></div>`;
+    return;
+  }
+  app.innerHTML = `
+    <div class="form-intro">
+      <div class="eyebrow">Coaching sport & nutrition</div>
+      <h1 style="font-size:26px; margin-top:6px;">Suivi hebdomadaire</h1>
+      <p>${prenom ? "Salut " + prenom + " ! " : ""}Prends 2 minutes pour faire le point sur ta semaine.</p>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label class="q">Ton poids actuel (kg)</label>
+        <div class="hint">Facultatif, seulement si tu le suis</div>
+        <input type="number" id="f-poids" step="0.1">
+      </div>
+      <div class="field">
+        <label class="q">Ton niveau d'énergie cette semaine (1 = épuisée, 10 = au top)</label>
+        <input type="range" id="f-energie" min="1" max="10" value="6">
+        <div class="hint" id="energie-val" style="text-align:center; font-size:16px; color:var(--terracotta-dark);">6</div>
+      </div>
+      <div class="field">
+        <label class="q">As-tu suivi le programme sport ?</label>
+        <div class="choices" id="sport-choices">
+          ${["Pas du tout","Un peu","La moitié","La plupart","Totalement"].map((l,i) => `<div class="choice" data-value="${(i+1)*20}">${l}</div>`).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <label class="q">As-tu suivi le plan nutrition ?</label>
+        <div class="choices" id="nutrition-choices">
+          ${["Pas du tout","Un peu","La moitié","La plupart","Totalement"].map((l,i) => `<div class="choice" data-value="${(i+1)*20}">${l}</div>`).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <label class="q">Des difficultés cette semaine ?</label>
+        <textarea id="f-difficultes" placeholder="Fatigue, manque de temps, motivation..."></textarea>
+      </div>
+      <div class="field">
+        <label class="q">Autre chose à me dire ?</label>
+        <textarea id="f-commentaire"></textarea>
+      </div>
+      <button id="envoyer-btn">Envoyer mon suivi</button>
+    </div>
+  `;
+
+  const energieInput = document.getElementById("f-energie");
+  energieInput.addEventListener("input", () => { document.getElementById("energie-val").textContent = energieInput.value; });
+
+  let sportVal = null, nutritionVal = null;
+  document.querySelectorAll("#sport-choices .choice").forEach(c => c.addEventListener("click", () => {
+    document.querySelectorAll("#sport-choices .choice").forEach(x => x.classList.remove("selected"));
+    c.classList.add("selected");
+    sportVal = Number(c.dataset.value);
+  }));
+  document.querySelectorAll("#nutrition-choices .choice").forEach(c => c.addEventListener("click", () => {
+    document.querySelectorAll("#nutrition-choices .choice").forEach(x => x.classList.remove("selected"));
+    c.classList.add("selected");
+    nutritionVal = Number(c.dataset.value);
+  }));
+
+  document.getElementById("envoyer-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("envoyer-btn");
+    btn.disabled = true; btn.textContent = "Envoi en cours...";
+    const row = {
+      cliente_id: clienteId,
+      poids: document.getElementById("f-poids").value ? Number(document.getElementById("f-poids").value) : null,
+      energie: Number(energieInput.value),
+      sport_suivi: sportVal,
+      nutrition_suivi: nutritionVal,
+      difficultes: document.getElementById("f-difficultes").value.trim(),
+      commentaire: document.getElementById("f-commentaire").value.trim(),
+    };
+    const { error } = await supabaseClient.from("checkins").insert(row);
+    if (error){
+      btn.disabled = false; btn.textContent = "Envoyer mon suivi";
+      alert("Une erreur est survenue, réessaie dans un instant.");
+      return;
+    }
+    app.innerHTML = `<div class="thankyou"><div class="mark">✓</div><h2>Merci !</h2><p>Ton suivi est bien envoyé. À la semaine prochaine !</p></div>`;
+  });
+}
+render();
+</script>
+</body>
+</html>
