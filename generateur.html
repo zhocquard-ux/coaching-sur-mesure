@@ -214,6 +214,11 @@ function renderForm(){
           <div class="checkbox-list" id="aliments-libres-liste" style="margin-top:10px;"></div>
         </div>
         <div class="field" style="margin-top:14px;"><label class="q">Repas à inclure</label><div class="checkbox-list">${repasOptions}</div></div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Budget courses / semaine (€)</label>
+          <div class="hint">Laisse vide pour ne pas limiter — sinon le générateur privilégie les recettes économiques</div>
+          <input type="number" id="f-budget" min="0" step="1">
+        </div>
       </fieldset>
 
       <button type="submit" id="generer-btn">Générer le planning</button>
@@ -305,6 +310,7 @@ function collecterClient(){
     alimentsEvites: valeursCochees("aliment"),
     alimentsEvitesLibre: alimentsLibreCourants.slice(),
     repasInclus: valeursCochees("repas"),
+    budgetSemaine: document.getElementById("f-budget").value ? Number(document.getElementById("f-budget").value) : null,
   };
 }
 
@@ -327,6 +333,7 @@ function remplirFormulaire(c){
   document.getElementById("f-trajet-ds").value = c.trajet_domicile_salle || 0;
   document.getElementById("f-trajet-st").value = c.trajet_salle_travail || 0;
   document.getElementById("f-tampon-repas").value = c.tampon_repas != null ? c.tampon_repas : 60;
+  document.getElementById("f-budget").value = c.budget_semaine != null ? c.budget_semaine : "";
   document.getElementById("f-vegetarien").checked = !!c.vegetarien;
   document.getElementById("f-vegan").checked = !!c.vegan;
   document.getElementById("f-sans-gluten").checked = !!c.sans_gluten;
@@ -436,6 +443,7 @@ async function enregistrerFiche(){
     trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail, tampon_repas: client.tamponRepas,
     vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
     aliments_evites: client.alimentsEvites, aliments_evites_libre: client.alimentsEvitesLibre, repas_inclus: client.repasInclus,
+    budget_semaine: client.budgetSemaine,
     dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
   };
   const btn = document.getElementById("enregistrer-btn");
@@ -469,6 +477,8 @@ function genererEtAfficher(){
 
 function afficherResultats(client, planSport, planRepas, liste, horaire){
   const resultats = document.getElementById("resultats");
+  const coutEstime = estimerCoutListe(liste);
+  const surBudget = client.budgetSemaine && coutEstime > client.budgetSemaine;
   resultats.innerHTML = `
     <div class="results-actions">
       <button id="enregistrer-btn">💾 Enregistrer cette fiche</button>
@@ -480,7 +490,9 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
     <div class="summary-stats">
       <div class="stat-block"><div class="n">${planSport.nbSeances}</div><div class="l">Séances / semaine</div></div>
       <div class="stat-block"><div class="n">${planRepas.proteinesCible}g</div><div class="l">Protéines / jour visées</div></div>
+      <div class="stat-block"><div class="n" style="${surBudget ? "color:var(--terracotta-dark);" : ""}">${coutEstime.toFixed(0)}€${client.budgetSemaine ? ` / ${client.budgetSemaine}€` : ""}</div><div class="l">Courses estimées / semaine</div></div>
     </div>
+    ${surBudget ? `<div class="card" style="margin-bottom:24px; border-color:var(--terracotta-dark);"><strong style="color:var(--terracotta-dark);">⚠ Le coût estimé dépasse le budget fixé.</strong> Réduis les portions, clique "Régénérer" (les recettes économiques sont déjà privilégiées), ou augmente le budget.</div>` : ""}
 
     ${horaire ? `<div class="card" style="margin-bottom:24px;">${horaire.possible ? `<strong>Créneau type :</strong> ${horaire.resume}` : `<strong style="color:var(--terracotta-dark);">⚠ ${horaire.message}</strong>`}</div>` : ""}
 

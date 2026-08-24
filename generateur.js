@@ -147,6 +147,43 @@ function placementHoraire(client){
 
 // ------------------------------------------------------------- NUTRITION ----
 
+/* Prix moyens estimés (€ par gramme/ml, ou € par pièce/tranche/portion) —
+   base de départ approximative pour prioriser les recettes économiques
+   quand un budget est fixé. */
+const PRIX_INGREDIENTS = {
+  "blanc de poulet":0.011, "bœuf haché 5%":0.014, "steak haché 5%":0.015, "escalope de dinde":0.013,
+  "filet mignon de porc":0.013, "filet de cabillaud":0.02, "pavé de saumon":0.025, "saumon cru mariné":0.03,
+  "thon au naturel":0.018, "crevettes":0.025, "tofu ferme":0.009, "jambon blanc":0.015,
+  "whey protéine":0.04, "whey chocolat":0.04, "skyr nature":0.006, "yaourt grec":0.007,
+  "fromage blanc":0.004, "fromage":0.012, "fromage râpé":0.012, "œufs":0.35,
+  "lentilles corail":0.006, "pois chiches":0.005, "haricots rouges":0.005, "légumineuses":0.005,
+  "edamame":0.012, "houmous":0.012, "beurre de cacahuète":0.01,
+  "riz":0.003, "riz complet":0.0035, "riz basmati":0.004, "riz vinaigré":0.004,
+  "quinoa":0.009, "quinoa cuit":0.009, "pâtes complètes":0.003, "nouilles de riz":0.005,
+  "pommes de terre":0.0025, "patate douce":0.004, "flocons d'avoine":0.003, "farine complète":0.002,
+  "pain complet":0.15, "tortilla complète":0.4, "pâte brisée":1.2, "granola":0.01, "muesli":0.008,
+  "brocolis":0.004, "carottes":0.002, "carottes/concombre":0.003, "courgettes":0.003, "haricots verts":0.005,
+  "légumes rôtis":0.004, "légumes sautés":0.004, "légumes vapeur":0.004, "légumes variés":0.004,
+  "oignons":0.002, "poivron":0.005, "salade composée":0.006, "salade verte":0.005,
+  "tomates cerises":0.006, "tomates concassées":0.003, "épinards frais":0.006, "maïs":0.004,
+  "fruit de saison":0.5, "fruits de saison":0.005, "fruits rouges":0.015, "fruits secs":0.02,
+  "mangue":0.006, "avocat":0.9, "banane":0.3, "pomme":0.4,
+  "amandes":0.02, "amandes/noix":0.02, "noix mélangées":0.02, "graines de chia":0.03,
+  "lait":0.0012, "lait d'amande":0.003, "lait de coco":0.004, "lait ou eau":0.0012, "bouillon":0.001, "miel":0.015,
+};
+const PRIX_DEFAUT = { g:0.005, ml:0.003, "pièce":0.5, tranche:0.15, tranches:0.15, portion:1.2 };
+
+function prixIngredient(nom, unite){
+  if (PRIX_INGREDIENTS[nom] != null) return PRIX_INGREDIENTS[nom];
+  return PRIX_DEFAUT[unite] != null ? PRIX_DEFAUT[unite] : 0.005;
+}
+function estimerCoutRecette(r){
+  return r.ingredients.reduce((total, ing) => total + ing.quantite * prixIngredient(ing.nom, ing.unite), 0);
+}
+function estimerCoutListe(liste){
+  return liste.reduce((total, i) => total + i.quantite * prixIngredient(i.nom, i.unite), 0);
+}
+
 function quotaProteines(poids, objectif, age){
   const coeffs = {
     perte_poids:[1.6,2.0], tonus:[1.8,2.2], prise_masse:[1.8,2.2],
@@ -177,7 +214,11 @@ function choisirRecette(repasType, client, utiliseesSemaine){
   if (parObjectif.length) candidats = parObjectif;
   if (!candidats.length) return null;
   const fraiches = candidats.filter(r => !utiliseesSemaine.has(r.id));
-  const source = fraiches.length ? fraiches : candidats;
+  let source = fraiches.length ? fraiches : candidats;
+  if (client.budgetSemaine && client.budgetSemaine > 0){
+    const triees = source.slice().sort((a,b) => estimerCoutRecette(a) - estimerCoutRecette(b));
+    source = triees.slice(0, Math.max(1, Math.ceil(triees.length * 0.6)));
+  }
   const choix = source[Math.floor(Math.random()*source.length)];
   utiliseesSemaine.add(choix.id);
   return choix;
