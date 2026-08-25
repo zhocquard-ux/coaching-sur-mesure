@@ -391,14 +391,32 @@ async function chargerCliente(id){
   if (data.dernier_planning_sport && data.dernier_planning_repas){
     afficherResultats(collecterClient(), data.dernier_planning_sport, data.dernier_planning_repas, data.derniere_liste_courses || [], placementHoraire(collecterClient()));
   }
-  renderSuivi(data.id, data.prenom);
+  renderSuivi(data.id, data.prenom, data.objectif);
   window.scrollTo(0,0);
 }
 
-async function renderSuivi(id, prenom){
+const SCALE_LABELS = {
+  sommeil: ["","Très mal","Mal","Correct","Bien","Très bien"],
+  ressenti_force: ["","Aucune progression","Un peu","Stable","Bonne progression","Très nette progression"],
+  appetit: ["","Faim constante","Souvent faim","Correct","Bien rassasiée","Très rassasiée"],
+  satisfaction: ["","Pas du tout satisfaite","Peu satisfaite","Moyennement satisfaite","Satisfaite","Très satisfaite"],
+};
+
+function coherenceBadge(objectif, deltaPoids){
+  if (deltaPoids == null || Math.abs(deltaPoids) < 0.1) return "";
+  const veutBaisse = objectif === "perte_poids";
+  const veutHausse = objectif === "prise_masse";
+  if (!veutBaisse && !veutHausse) return "";
+  const conforme = veutBaisse ? deltaPoids < 0 : deltaPoids > 0;
+  return conforme
+    ? `<span style="color:var(--accent, #5F6E3F); font-weight:600;">✓ conforme à l'objectif</span>`
+    : `<span style="color:var(--terracotta-dark);">⚠ à l'inverse de l'objectif</span>`;
+}
+
+async function renderSuivi(id, prenom, objectif){
   const box = document.getElementById("suivi-hebdo");
   if (!id){ box.innerHTML = ""; return; }
-  const lien = `${window.location.origin}${window.location.pathname.replace("generateur.html","")}checkin.html?id=${id}&nom=${encodeURIComponent(prenom||"")}`;
+  const lien = `${window.location.origin}${window.location.pathname.replace("generateur.html","")}checkin.html?id=${id}&nom=${encodeURIComponent(prenom||"")}&obj=${encodeURIComponent(objectif||"")}`;
   const { data, error } = await supabaseClient.from("checkins").select("*").eq("cliente_id", id).order("created_at", { ascending:false });
 
   box.innerHTML = `
@@ -414,14 +432,26 @@ async function renderSuivi(id, prenom){
       <div style="margin-top:16px;">
         ${error ? `<p>Erreur de chargement des check-ins.</p>` :
           !data.length ? `<p style="color:var(--ink-light); font-style:italic;">Aucun suivi reçu pour l'instant.</p>` :
-          data.map(c => `
+          data.map((c, i) => {
+            const precedent = data[i+1];
+            const deltaPoids = (c.poids != null && precedent && precedent.poids != null) ? +(c.poids - precedent.poids).toFixed(1) : null;
+            const badge = coherenceBadge(objectif, deltaPoids);
+            return `
             <div class="detail-row">
               <span class="k">${new Date(c.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}</span>
-              ${c.poids ? `Poids : ${c.poids} kg — ` : ""}Énergie : ${c.energie}/10 — Sport suivi : ${c.sport_suivi||0}% — Nutrition suivie : ${c.nutrition_suivi||0}%
+              ${c.poids ? `Poids : ${c.poids} kg${deltaPoids != null ? ` (${deltaPoids > 0 ? "+" : ""}${deltaPoids} kg)` : ""} — ` : ""}
+              ${c.tour_taille ? `Tour de taille : ${c.tour_taille} cm — ` : ""}
+              Énergie : ${c.energie}/10 — Sport suivi : ${c.sport_suivi||0}% — Nutrition suivie : ${c.nutrition_suivi||0}%
+              ${badge ? `<br>${badge}` : ""}
+              ${c.sommeil ? `<br>Sommeil : ${SCALE_LABELS.sommeil[c.sommeil]}` : ""}
+              ${c.ressenti_force ? `<br>Force ressentie : ${SCALE_LABELS.ressenti_force[c.ressenti_force]}` : ""}
+              ${c.appetit ? `<br>Faim / satiété : ${SCALE_LABELS.appetit[c.appetit]}` : ""}
+              ${c.satisfaction ? `<br>Satisfaction : ${SCALE_LABELS.satisfaction[c.satisfaction]}` : ""}
               ${c.difficultes ? `<br><em>Difficultés : ${c.difficultes}</em>` : ""}
               ${c.commentaire ? `<br><em>${c.commentaire}</em>` : ""}
             </div>
-          `).join("")
+          `;
+          }).join("")
         }
       </div>
     </fieldset>
@@ -464,7 +494,7 @@ async function enregistrerFiche(){
   if (result.error){ alert("Erreur d'enregistrement : " + result.error.message); return; }
   clienteActuelleId = result.data.id;
   chargerListeClientes();
-  renderSuivi(clienteActuelleId, result.data.prenom);
+  renderSuivi(clienteActuelleId, result.data.prenom, result.data.objectif);
 }
 
 // ---- Génération ----

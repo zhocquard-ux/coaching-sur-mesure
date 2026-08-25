@@ -26,6 +26,11 @@
 const params = new URLSearchParams(window.location.search);
 const clienteId = params.get("id");
 const prenom = params.get("nom") || "";
+const objectif = params.get("obj") || "";
+
+function scaleChoices(id, labels){
+  return `<div class="choices" id="${id}">${labels.map((l,i) => `<div class="choice" data-value="${i+1}">${l}</div>`).join("")}</div>`;
+}
 
 function render(){
   const app = document.getElementById("app");
@@ -33,6 +38,8 @@ function render(){
     app.innerHTML = `<div class="card"><p>Lien invalide — demande à ton coach de te renvoyer ton lien personnel de suivi.</p></div>`;
     return;
   }
+  const showForce = objectif === "prise_masse" || objectif === "tonus";
+  const showAppetit = objectif === "perte_poids" || objectif === "endurance";
   app.innerHTML = `
     <div class="form-intro">
       <div class="eyebrow">Coaching sport & nutrition</div>
@@ -44,6 +51,11 @@ function render(){
         <label class="q">Ton poids actuel (kg)</label>
         <div class="hint">Facultatif, seulement si tu le suis</div>
         <input type="number" id="f-poids" step="0.1">
+      </div>
+      <div class="field">
+        <label class="q">Ton tour de taille (cm)</label>
+        <div class="hint">Facultatif — souvent plus parlant que le poids seul</div>
+        <input type="number" id="f-taille" step="0.5">
       </div>
       <div class="field">
         <label class="q">Ton niveau d'énergie cette semaine (1 = épuisée, 10 = au top)</label>
@@ -63,8 +75,27 @@ function render(){
         </div>
       </div>
       <div class="field">
+        <label class="q">Comment as-tu dormi cette semaine ?</label>
+        ${scaleChoices("sommeil-choices", ["Très mal","Mal","Correct","Bien","Très bien"])}
+      </div>
+      ${showForce ? `
+      <div class="field">
+        <label class="q">As-tu senti une progression en force (charges, répétitions) ?</label>
+        ${scaleChoices("force-choices", ["Aucune","Un peu","Stable","Bonne","Très nette"])}
+      </div>` : ""}
+      ${showAppetit ? `
+      <div class="field">
+        <label class="q">Comment était ta faim / sensation de satiété avec le plan ?</label>
+        ${scaleChoices("appetit-choices", ["Faim constante","Souvent faim","Correct","Bien rassasiée","Très rassasiée"])}
+      </div>` : ""}
+      <div class="field">
+        <label class="q">Es-tu satisfaite de ton programme cette semaine ?</label>
+        ${scaleChoices("satisfaction-choices", ["Pas du tout","Peu","Moyennement","Satisfaite","Très satisfaite"])}
+      </div>
+      <div class="field">
         <label class="q">Des difficultés cette semaine ?</label>
-        <textarea id="f-difficultes" placeholder="Fatigue, manque de temps, motivation..."></textarea>
+        <div class="hint">Douleur sur un exercice en particulier, fatigue, manque de temps, motivation...</div>
+        <textarea id="f-difficultes" placeholder="Ex : douleur à l'épaule sur le développé militaire"></textarea>
       </div>
       <div class="field">
         <label class="q">Autre chose à me dire ?</label>
@@ -73,6 +104,15 @@ function render(){
       <button id="envoyer-btn">Envoyer mon suivi</button>
     </div>
   `;
+
+  ["sommeil-choices","force-choices","appetit-choices","satisfaction-choices"].forEach(id => {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.querySelectorAll(".choice").forEach(c => c.addEventListener("click", () => {
+      box.querySelectorAll(".choice").forEach(x => x.classList.remove("selected"));
+      c.classList.add("selected");
+    }));
+  });
 
   const energieInput = document.getElementById("f-energie");
   energieInput.addEventListener("input", () => { document.getElementById("energie-val").textContent = energieInput.value; });
@@ -89,15 +129,27 @@ function render(){
     nutritionVal = Number(c.dataset.value);
   }));
 
+  function scaleValue(id){
+    const box = document.getElementById(id);
+    if (!box) return null;
+    const sel = box.querySelector(".choice.selected");
+    return sel ? Number(sel.dataset.value) : null;
+  }
+
   document.getElementById("envoyer-btn").addEventListener("click", async () => {
     const btn = document.getElementById("envoyer-btn");
     btn.disabled = true; btn.textContent = "Envoi en cours...";
     const row = {
       cliente_id: clienteId,
       poids: document.getElementById("f-poids").value ? Number(document.getElementById("f-poids").value) : null,
+      tour_taille: document.getElementById("f-taille").value ? Number(document.getElementById("f-taille").value) : null,
       energie: Number(energieInput.value),
       sport_suivi: sportVal,
       nutrition_suivi: nutritionVal,
+      sommeil: scaleValue("sommeil-choices"),
+      ressenti_force: scaleValue("force-choices"),
+      appetit: scaleValue("appetit-choices"),
+      satisfaction: scaleValue("satisfaction-choices"),
       difficultes: document.getElementById("f-difficultes").value.trim(),
       commentaire: document.getElementById("f-commentaire").value.trim(),
     };
