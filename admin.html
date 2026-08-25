@@ -104,7 +104,7 @@ async function renderExercices(){
             <select id="ex-materiel">${Object.keys(MATERIEL_LABELS).map(m=>`<option value="${m}" ${String(e.materiel)===m?"selected":""}>${MATERIEL_LABELS[m]}</option>`).join("")}</select>
           </div>
           <div class="field"><label class="q">Type</label>
-            <select id="ex-type"><option value="renfo" ${e.type==="renfo"?"selected":""}>Renforcement</option><option value="cardio" ${e.type==="cardio"?"selected":""}>Cardio</option></select>
+            <select id="ex-type"><option value="renfo" ${e.type==="renfo"?"selected":""}>Renforcement</option><option value="cardio" ${e.type==="cardio"?"selected":""}>Cardio</option><option value="etirement" ${e.type==="etirement"?"selected":""}>Étirement</option></select>
           </div>
           <div class="field"><label class="q">Format (ex : 4x10, 3x30s)</label><input type="text" id="ex-format" value="${e.format||""}"></div>
         </div>

@@ -100,6 +100,21 @@ function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, 
   return choisis;
 }
 
+function pickEtirements(zones, pool){
+  const candidats = pool.filter(e => e.type === "etirement" && (zones.includes(e.zone) || e.zone === "full_body"));
+  const choisis = [];
+  zones.forEach(z => {
+    if (choisis.length >= 2) return;
+    const options = candidats.filter(e => e.zone === z && !choisis.includes(e));
+    if (options.length) choisis.push(options[Math.floor(Math.random()*options.length)]);
+  });
+  if (!choisis.length){
+    const fullBody = candidats.filter(e => e.zone === "full_body");
+    if (fullBody.length) choisis.push(fullBody[Math.floor(Math.random()*fullBody.length)]);
+  }
+  return choisis;
+}
+
 function genererPlanningSport(client){
   const n = nbSeances(client.niveau, client.joursDispo.length);
   const joursTries = JOURS.filter(j => client.joursDispo.includes(j));
@@ -119,7 +134,8 @@ function genererPlanningSport(client){
     dernierType = typeJour;
     const nbEx = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
     const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds);
-    return { jour, typeJour, exercices };
+    const etirements = pickEtirements(zones, pool);
+    return { jour, typeJour, exercices, etirements };
   });
 
   return { nbSeances: n, seances };

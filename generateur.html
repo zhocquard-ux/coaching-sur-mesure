@@ -511,6 +511,11 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
           <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th></tr></thead>
           <tbody>${s.exercices.map(e => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td></tr>`).join("") || `<tr><td colspan="3">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
         </table>
+        ${s.etirements && s.etirements.length ? `
+        <div style="margin-top:10px;">
+          <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
+          <ul style="margin:6px 0 0; padding-left:18px; font-size:13.5px;">${s.etirements.map(e => `<li>${e.nom} — ${e.format}</li>`).join("")}</ul>
+        </div>` : ""}
       </div>
     `).join("")}
 
