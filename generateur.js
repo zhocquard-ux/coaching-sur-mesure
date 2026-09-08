@@ -37,12 +37,35 @@ function choisirJours(joursDispoTries, n){
   return [...new Set(chosen)];
 }
 
-function getSplit(n){
+function getSplitBase(n){
   if (n <= 1) return ["Full Body"];
   if (n === 2) return ["Full Body A","Full Body B"];
   if (n === 3) return ["Full Body A","Full Body B","Full Body C"];
   if (n === 4) return ["Haut du corps","Bas du corps","Haut du corps","Bas du corps"];
   return ["Push","Pull","Jambes","Full Body","Zone prioritaire"];
+}
+
+// Sans zone prioritaire choisie, la répartition ne change pas. Dès qu'une
+// zone prioritaire est cochée, on lui dédie explicitement au moins la moitié
+// des séances de la semaine (arrondi au-dessus) — sinon elle n'apparaissait
+// que sur 1 séance sur 5, uniquement pour les plannings à 5 séances.
+function getSplit(n, zonesPrioritaires){
+  const base = getSplitBase(n);
+  const hasPriorite = zonesPrioritaires && zonesPrioritaires.length > 0;
+  if (!hasPriorite || n === 5) return base;
+
+  const nbPriorite = Math.max(1, Math.ceil(n / 2));
+  const remplissage = base.filter(t => t !== "Zone prioritaire");
+  const result = new Array(n).fill(null);
+  const step = n / nbPriorite;
+  for (let i = 0; i < nbPriorite; i++){
+    result[Math.min(n - 1, Math.floor(i * step))] = "Zone prioritaire";
+  }
+  let fi = 0;
+  for (let i = 0; i < n; i++){
+    if (!result[i]) result[i] = remplissage[fi++ % remplissage.length];
+  }
+  return result;
 }
 
 function zonesPourJour(typeJour, zonesPrioritaires, indexFullBody){
@@ -113,6 +136,24 @@ function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, 
     zi++;
   }
 
+  // Si les zones demandées (ex : zones prioritaires trop restreintes pour le
+  // matériel/niveau du client) n'ont pas suffi à remplir la séance, on
+  // complète avec le reste de la bibliothèque plutôt que de livrer une
+  // séance incomplète.
+  if (choisis.filter(e => e.type === "renfo").length < nbRenfo){
+    const toutRenfo = pool.filter(e => e.type === "renfo" && !choisis.includes(e));
+    let tentativesComplement = 0;
+    while (choisis.filter(e => e.type === "renfo").length < nbRenfo && tentativesComplement < nbExercices * 20){
+      tentativesComplement++;
+      const restants = toutRenfo.filter(e => !choisis.includes(e));
+      if (!restants.length) break;
+      const frais = restants.filter(e => !dejaUtilises.has(e.id));
+      const source = preferPolyarticulaire(frais.length ? frais : restants);
+      if (!source.length) break;
+      choisis.push(source[Math.floor(Math.random()*source.length)]);
+    }
+  }
+
   const cardioCandidats = pool.filter(e => e.type === "cardio" && (zones.includes(e.zone) || e.zone === "full_body"));
   const cardioPrefere = cardioCandidats.find(e => preferIds.includes(e.id) && !choisis.includes(e));
   if (cardioPrefere && nbCardio > 0) choisis.push(cardioPrefere);
@@ -165,7 +206,7 @@ function genererPlanningSport(client){
   const n = nbSeances(client.niveau, joursEntrainables.length);
   const joursTries = JOURS.filter(j => joursEntrainables.includes(j));
   const joursChoisis = choisirJours(joursTries, n);
-  const split = getSplit(n);
+  const split = getSplit(n, client.zonesPrioritaires);
   const pool = exercicesValides(client);
   const ratio = client.typeEffort === "cardio" ? 1 : client.typeEffort === "renfo" ? 0 : ratioCardioPour(client);
   const dejaUtilises = new Set();
