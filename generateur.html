@@ -444,6 +444,7 @@ function remplirFormulaire(c){
 function nouvelleFiche(){
   clienteActuelleId = null;
   prospectActuelId = null;
+  dernierResultat = null;
   document.getElementById("gen-form").reset();
   cocherValeurs("repas", ["petit_dej","dejeuner","diner"]);
   document.getElementById("f-tampon-repas").value = 60;
@@ -564,8 +565,12 @@ async function chargerCliente(id){
   document.getElementById("notes-prospect").innerHTML = "";
   remplirFormulaire(data);
   document.getElementById("resultats").innerHTML = "";
+  dernierResultat = null;
   if (data.dernier_planning_sport && data.dernier_planning_repas){
-    afficherResultats(collecterClient(), data.dernier_planning_sport, data.dernier_planning_repas, data.derniere_liste_courses || [], placementHoraire(collecterClient()));
+    const client = collecterClient();
+    const horaire = placementHoraire(client);
+    dernierResultat = { client, planSport: data.dernier_planning_sport, planRepas: data.dernier_planning_repas, liste: data.derniere_liste_courses || [], horaire };
+    afficherResultats(client, dernierResultat.planSport, dernierResultat.planRepas, dernierResultat.liste, horaire, true);
   }
   renderSuivi(data.id, data.prenom, data.objectif);
   window.scrollTo(0,0);
@@ -694,11 +699,32 @@ function genererEtAfficher(){
   const planRepas = genererPlanningRepas(client);
   const liste = genererListeCourses(planRepas);
   const horaire = placementHoraire(client);
-  dernierResultat = { client, planSport, planRepas, liste };
+  dernierResultat = { client, planSport, planRepas, liste, horaire };
   afficherResultats(client, planSport, planRepas, liste, horaire);
 }
 
-function afficherResultats(client, planSport, planRepas, liste, horaire){
+function rerenderResultats(){
+  const { client, planSport, planRepas, liste, horaire } = dernierResultat;
+  afficherResultats(client, planSport, planRepas, liste, horaire, true);
+}
+
+function retirerExercice(jour, index){
+  const seance = dernierResultat.planSport.seances.find(s => s.jour === jour);
+  if (!seance) return;
+  seance.exercices.splice(index, 1);
+  rerenderResultats();
+}
+
+function ajouterExercice(jour, exerciceId){
+  if (!exerciceId) return;
+  const seance = dernierResultat.planSport.seances.find(s => s.jour === jour);
+  const exo = EXERCICES.find(e => e.id === exerciceId);
+  if (!seance || !exo) return;
+  seance.exercices.push(exo);
+  rerenderResultats();
+}
+
+function afficherResultats(client, planSport, planRepas, liste, horaire, skipScroll){
   const resultats = document.getElementById("resultats");
   const coutEstime = estimerCoutListe(liste, client.supermarche);
   const surBudget = client.budgetSemaine && coutEstime > client.budgetSemaine;
@@ -726,14 +752,21 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
         <div class="day-meta" style="color:var(--ink-light);">${s.suggestion}</div>
       </div>
     ` : `
-      <div class="plan-day">
+      <div class="plan-day" data-jour="${s.jour}">
         <h3>${s.jour} — ${s.typeJour}</h3>
         <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
         ${s.adaptee ? `<div class="day-meta" style="color:var(--terracotta-dark);">⚠ Séance adaptée — douleurs signalées, charge allégée et abdos à faible pression.</div>` : ""}
         <table class="plan-table">
-          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th></tr></thead>
-          <tbody>${s.exercices.map(e => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td></tr>`).join("") || `<tr><td colspan="3">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
+          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th></th></tr></thead>
+          <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td><td><button type="button" class="ex-remove-btn" data-jour="${s.jour}" data-idx="${i}" title="Retirer cet exercice">✕</button></td></tr>`).join("") || `<tr><td colspan="4">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
         </table>
+        <div class="ex-add-row" style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+          <select class="ex-add-select" data-jour="${s.jour}" style="flex:1;">
+            <option value="">+ Ajouter un exercice…</option>
+            ${Object.keys(ZONE_LABELS).map(z => `<optgroup label="${ZONE_LABELS[z]}">${EXERCICES.filter(e=>e.zone===z).map(e=>`<option value="${e.id}">${e.nom} (${e.format})</option>`).join("")}</optgroup>`).join("")}
+          </select>
+          <button type="button" class="btn-ghost ex-add-btn" data-jour="${s.jour}" style="width:auto;">Ajouter</button>
+        </div>
         ${s.etirements && s.etirements.length ? `
         <div style="margin-top:10px;">
           <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
@@ -776,7 +809,16 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
   document.getElementById("enregistrer-btn").addEventListener("click", enregistrerFiche);
   document.getElementById("regenerer-btn").addEventListener("click", genererEtAfficher);
   document.getElementById("print-btn").addEventListener("click", () => window.print());
-  resultats.scrollIntoView({ behavior:"smooth" });
+  resultats.querySelectorAll(".ex-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => retirerExercice(btn.dataset.jour, Number(btn.dataset.idx)));
+  });
+  resultats.querySelectorAll(".ex-add-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const select = resultats.querySelector(`.ex-add-select[data-jour="${btn.dataset.jour}"]`);
+      ajouterExercice(btn.dataset.jour, select.value);
+    });
+  });
+  if (!skipScroll) resultats.scrollIntoView({ behavior:"smooth" });
 }
 </script>
 </body>
