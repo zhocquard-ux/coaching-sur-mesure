@@ -55,6 +55,7 @@ const REPAS_DEFAUT = {
 };
 
 let clienteActuelleId = null;
+let prospectActuelId = null;
 let dernierResultat = null; // { client, planSport, planRepas, liste, horaire }
 
 // ---- Authentification ----
@@ -69,6 +70,7 @@ async function verifierSession(){
   await chargerBibliotheque();
   renderForm();
   chargerListeClientes();
+  chargerProspects();
 }
 verifierSession();
 
@@ -118,6 +120,16 @@ function renderForm(){
         ${parZone[zone].map(e => `<label class="checkbox-chip"><input type="checkbox" name="prefer-exo" value="${e.id}"> ${e.nom}</label>`).join("")}
       </div>
     </details>`).join("");
+  const RECETTE_TYPE_LABELS = { petit_dej:"Petit-déjeuner", collation:"Collations", dejeuner_diner:"Déjeuner / Dîner" };
+  const parTypeRecette = {};
+  RECETTES.forEach(r => { (parTypeRecette[r.repas] = parTypeRecette[r.repas] || []).push(r); });
+  const preferRecettesHtml = Object.keys(parTypeRecette).map(type => `
+    <details style="margin-bottom:8px;">
+      <summary style="cursor:pointer; font-size:13.5px; font-weight:600;">${RECETTE_TYPE_LABELS[type] || type}</summary>
+      <div class="checkbox-list" style="margin-top:8px;">
+        ${parTypeRecette[type].map(r => `<label class="checkbox-chip"><input type="checkbox" name="prefer-recette" value="${r.id}"> ${r.nom}</label>`).join("")}
+      </div>
+    </details>`).join("");
 
   document.getElementById("app").innerHTML = `
     <div class="form-intro">
@@ -126,11 +138,18 @@ function renderForm(){
       <p>Rentre les infos de la personne, génère son planning sport + repas + liste de courses.</p>
     </div>
 
+    <fieldset id="prospects-fieldset" style="display:none;">
+      <legend>Nouveaux prospects (questionnaire)</legend>
+      <div id="liste-prospects" style="font-size:13.5px; color:var(--ink-light);"></div>
+    </fieldset>
+
     <fieldset>
       <legend>Mes clientes</legend>
       <div id="liste-clientes" style="font-size:13.5px; color:var(--ink-light);">Chargement…</div>
       <button type="button" id="nouvelle-fiche-btn" class="btn-ghost" style="width:auto; margin-top:12px;">+ Nouvelle fiche</button>
     </fieldset>
+
+    <div id="notes-prospect"></div>
 
     <div id="suivi-hebdo"></div>
 
@@ -140,6 +159,8 @@ function renderForm(){
         <div class="gen-form-grid">
           <div class="field"><label class="q">Prénom</label><input type="text" id="f-prenom"></div>
           <div class="field"><label class="q">Âge</label><input type="number" id="f-age" value="30"></div>
+          <div class="field"><label class="q">Email</label><input type="email" id="f-email"></div>
+          <div class="field"><label class="q">Téléphone</label><input type="tel" id="f-telephone"></div>
           <div class="field"><label class="q">Sexe</label>
             <select id="f-sexe"><option value="femme">Femme</option><option value="homme">Homme</option><option value="autre">Autre</option></select>
           </div>
@@ -221,6 +242,10 @@ function renderForm(){
         </div>
         <div class="field" style="margin-top:14px;"><label class="q">Repas à inclure</label><div class="checkbox-list">${repasOptions}</div></div>
         <div class="field" style="margin-top:14px;">
+          <label class="q">Recettes préférées (à privilégier dans le planning)</label>
+          ${preferRecettesHtml}
+        </div>
+        <div class="field" style="margin-top:14px;">
           <label class="q">Budget courses / semaine (€)</label>
           <div class="hint">Laisse vide pour ne pas limiter — sinon le générateur privilégie les recettes économiques</div>
           <input type="number" id="f-budget" min="0" step="1">
@@ -284,6 +309,8 @@ function timeToMinutes(hhmm){
 function collecterClient(){
   return {
     prenom: document.getElementById("f-prenom").value || "Cliente",
+    email: document.getElementById("f-email").value.trim(),
+    telephone: document.getElementById("f-telephone").value.trim(),
     age: Number(document.getElementById("f-age").value) || 30,
     sexe: document.getElementById("f-sexe").value,
     objectif: document.getElementById("f-objectif").value,
@@ -316,12 +343,15 @@ function collecterClient(){
     alimentsEvites: valeursCochees("aliment"),
     alimentsEvitesLibre: alimentsLibreCourants.slice(),
     repasInclus: valeursCochees("repas"),
+    recettesPreferees: valeursCochees("prefer-recette"),
     budgetSemaine: document.getElementById("f-budget").value ? Number(document.getElementById("f-budget").value) : null,
   };
 }
 
 function remplirFormulaire(c){
   document.getElementById("f-prenom").value = c.prenom || "";
+  document.getElementById("f-email").value = c.email || "";
+  document.getElementById("f-telephone").value = c.telephone || "";
   document.getElementById("f-age").value = c.age || 30;
   document.getElementById("f-sexe").value = c.sexe || "femme";
   document.getElementById("f-objectif").value = c.objectif || "perte_poids";
@@ -353,10 +383,12 @@ function remplirFormulaire(c){
   alimentsLibreCourants = (c.aliments_evites_libre || []).slice();
   renderAlimentsLibres();
   cocherValeurs("repas", c.repas_inclus && c.repas_inclus.length ? c.repas_inclus : ["petit_dej","dejeuner","diner"]);
+  cocherValeurs("prefer-recette", c.recettes_preferees);
 }
 
 function nouvelleFiche(){
   clienteActuelleId = null;
+  prospectActuelId = null;
   document.getElementById("gen-form").reset();
   cocherValeurs("repas", ["petit_dej","dejeuner","diner"]);
   document.getElementById("f-tampon-repas").value = 60;
@@ -365,6 +397,7 @@ function nouvelleFiche(){
   document.getElementById("horaire-fields").style.display = "grid";
   document.getElementById("resultats").innerHTML = "";
   document.getElementById("suivi-hebdo").innerHTML = "";
+  document.getElementById("notes-prospect").innerHTML = "";
   window.scrollTo(0,0);
 }
 
@@ -382,10 +415,96 @@ async function chargerListeClientes(){
   box.querySelectorAll(".cliente-item").forEach(btn => btn.addEventListener("click", () => chargerCliente(btn.dataset.id)));
 }
 
+// ---- Prospects (questionnaire public → fiche cliente en un clic) ----
+async function chargerProspects(){
+  const fieldset = document.getElementById("prospects-fieldset");
+  const box = document.getElementById("liste-prospects");
+  const { data, error } = await supabaseClient.from("prospects").select("id, created_at, reponses").eq("converti", false).order("created_at", { ascending:false });
+  if (error || !data || !data.length){ fieldset.style.display = "none"; return; }
+  fieldset.style.display = "block";
+  box.innerHTML = `<div class="checkbox-list">${data.map(p => `
+    <button type="button" class="checkbox-chip prospect-item" data-id="${p.id}" style="cursor:pointer; border-color:var(--accent, #5F6E3F);">
+      ${(p.reponses && p.reponses.prenom) || "Sans nom"} <span style="color:var(--ink-light); font-size:11px;">— ${new Date(p.created_at).toLocaleDateString("fr-FR")}</span>
+    </button>
+  `).join("")}</div>`;
+  box.querySelectorAll(".prospect-item").forEach(btn => btn.addEventListener("click", () => ouvrirProspect(btn.dataset.id)));
+}
+
+function mapProspectToClient(r){
+  const OBJECTIF_MAP = { "Perte de poids":"perte_poids", "Tonus musculaire":"tonus", "Énergie au quotidien":"energie", "Reprise de routine":"reprise", "Prise de masse":"prise_masse", "Endurance":"endurance" };
+  const NIVEAU_MAP = { "Débutant(e)":"debutant", "Intermédiaire":"intermediaire", "Avancé(e)":"avance" };
+  const LIEU_MAP = { "Salle de sport":"salle", "Maison":"maison", "Extérieur":"exterieur", "Mixte":"mixte" };
+  const MATERIEL_MAP = { "Aucun":"aucun", "Quelques accessoires":"quelques_accessoires", "Équipement complet":"complet" };
+  const EFFORT_MAP = { "Cardio uniquement":"cardio", "Renforcement uniquement":"renfo", "Mix cardio + renfo":"mix" };
+  const MOMENT_MAP = { "Matin":"matin", "Midi":"midi", "Fin d'après-midi":"soir", "Soir":"soir" };
+  const ZONE_MAP = { "Pectoraux":"pectoraux", "Dos":"dos", "Épaules":"epaules", "Trapèzes":"trapezes", "Lombaires":"lombaires", "Biceps":"biceps", "Triceps":"triceps", "Avant-bras":"avant_bras", "Abdominaux":"abdominaux", "Obliques":"obliques", "Fessiers":"fessiers", "Quadriceps":"quadriceps", "Ischio-jambiers":"ischio_jambiers", "Adducteurs":"adducteurs", "Mollets":"mollets" };
+
+  const joursTrouves = (r.jours_dispo || "").toLowerCase();
+  const jours = JOURS.filter(j => joursTrouves.includes(j.toLowerCase()));
+
+  const alimentsLibre = [r.aliments_eviter, r.allergies].filter(Boolean).join(", ")
+    .split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+
+  return {
+    prenom: (r.prenom || "").split(" ")[0] || r.prenom,
+    email: r.email, telephone: r.telephone,
+    age: r.age ? Number(r.age) : undefined,
+    objectif: OBJECTIF_MAP[r.objectif],
+    poids_actuel: r.poids_actuel ? Number(r.poids_actuel) : undefined,
+    poids_souhaite: r.poids_objectif ? Number(r.poids_objectif) : undefined,
+    niveau: NIVEAU_MAP[r.niveau],
+    type_effort: EFFORT_MAP[r.effort],
+    zones_prioritaires: (r.zones || []).map(z => ZONE_MAP[z]).filter(Boolean),
+    jours_dispo: jours,
+    duree_seance: r.duree_seance ? Number(r.duree_seance) : undefined,
+    lieu: LIEU_MAP[r.lieu],
+    materiel: MATERIEL_MAP[r.materiel],
+    moment_prefere: MOMENT_MAP[r.moment_forme],
+    vegetarien: r.regime === "Végétarien" || r.regime === "Végan",
+    vegan: r.regime === "Végan",
+    sans_gluten: r.regime === "Sans gluten",
+    aliments_evites_libre: alimentsLibre,
+    budget_semaine: r.budget ? Number(r.budget) : undefined,
+  };
+}
+
+async function ouvrirProspect(id){
+  const { data, error } = await supabaseClient.from("prospects").select("*").eq("id", id).single();
+  if (error){ alert("Erreur de chargement : " + error.message); return; }
+  const r = data.reponses || {};
+  nouvelleFiche();
+  clienteActuelleId = null;
+  prospectActuelId = id;
+  remplirFormulaire(mapProspectToClient(r));
+
+  const notes = [
+    ["Maladie / souci cardiaque ou respiratoire", r.sante],
+    ["Blessures / douleurs récurrentes", r.blessures],
+    ["Mouvements déconseillés par un médecin", r.contre_indications],
+    ["Aliments à garder absolument", r.aliments_garder],
+    ["Exercices aimés", r.exos_aimes],
+    ["Exercices à éviter", r.exos_evites],
+    ["Historique de coaching", r.historique],
+    ["Frein principal", r.frein],
+  ].filter(([, v]) => v && String(v).trim());
+
+  document.getElementById("notes-prospect").innerHTML = notes.length ? `
+    <div class="card" style="margin:20px 0; border-color:var(--terracotta-dark, #B5573B);">
+      <strong style="color:var(--terracotta-dark, #B5573B);">⚠ À lire avant d'enregistrer — réponses libres du questionnaire de ${r.prenom || "ce prospect"} :</strong>
+      <div style="margin-top:10px; font-size:13.5px;">
+        ${notes.map(([label, val]) => `<div style="margin-bottom:6px;"><strong>${label} :</strong> ${val}</div>`).join("")}
+      </div>
+      <div class="hint" style="margin-top:10px;">Coche les cases correspondantes dans "Problèmes de santé" et "Exercices à exclure / préférés" ci-dessous après lecture.</div>
+    </div>` : "";
+  window.scrollTo(0, document.getElementById("notes-prospect").offsetTop - 20);
+}
+
 async function chargerCliente(id){
   const { data, error } = await supabaseClient.from("clientes").select("*").eq("id", id).single();
   if (error){ alert("Erreur de chargement : " + error.message); return; }
   clienteActuelleId = data.id;
+  prospectActuelId = null;
+  document.getElementById("notes-prospect").innerHTML = "";
   remplirFormulaire(data);
   document.getElementById("resultats").innerHTML = "";
   if (data.dernier_planning_sport && data.dernier_planning_repas){
@@ -469,7 +588,8 @@ async function enregistrerFiche(){
   if (!dernierResultat){ alert("Génère d'abord un planning avant d'enregistrer."); return; }
   const { client, planSport, planRepas, liste } = dernierResultat;
   const row = {
-    prenom: client.prenom, age: client.age, sexe: client.sexe, objectif: client.objectif,
+    prenom: client.prenom, email: client.email || null, telephone: client.telephone || null,
+    age: client.age, sexe: client.sexe, objectif: client.objectif,
     poids_actuel: client.poidsActuel, poids_souhaite: client.poidsSouhaite,
     niveau: client.niveau, type_effort: client.typeEffort,
     zones_prioritaires: client.zonesPrioritaires, problemes_sante: client.problemesSante,
@@ -479,7 +599,7 @@ async function enregistrerFiche(){
     trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail, tampon_repas: client.tamponRepas,
     vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
     aliments_evites: client.alimentsEvites, aliments_evites_libre: client.alimentsEvitesLibre, repas_inclus: client.repasInclus,
-    budget_semaine: client.budgetSemaine,
+    recettes_preferees: client.recettesPreferees, budget_semaine: client.budgetSemaine,
     dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
   };
   const btn = document.getElementById("enregistrer-btn");
@@ -493,6 +613,12 @@ async function enregistrerFiche(){
   btn.disabled = false; btn.textContent = "💾 Enregistrer cette fiche";
   if (result.error){ alert("Erreur d'enregistrement : " + result.error.message); return; }
   clienteActuelleId = result.data.id;
+  if (prospectActuelId){
+    await supabaseClient.from("prospects").update({ converti: true, cliente_id: clienteActuelleId }).eq("id", prospectActuelId);
+    prospectActuelId = null;
+    document.getElementById("notes-prospect").innerHTML = "";
+    chargerProspects();
+  }
   chargerListeClientes();
   renderSuivi(clienteActuelleId, result.data.prenom, result.data.objectif);
 }

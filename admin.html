@@ -108,6 +108,9 @@ async function renderExercices(){
           </div>
           <div class="field"><label class="q">Format (ex : 4x10, 3x30s)</label><input type="text" id="ex-format" value="${e.format||""}"></div>
         </div>
+        <div class="field" style="margin-top:14px;">
+          <label class="checkbox-chip"><input type="checkbox" id="ex-poly" ${e.polyarticulaire ? "checked" : ""}> Mouvement polyarticulaire (squat, développé, rowing, traction...)</label>
+        </div>
         <div class="field" style="margin-top:14px;"><label class="q">Contre-indications</label><div class="checkbox-list">${champCoche("ex-ci", SANTE_LABELS, e.contre_indications)}</div></div>
         <div style="display:flex; gap:10px; margin-top:16px;">
           <button type="submit">${e.id ? "Enregistrer les modifications" : "Ajouter"}</button>
@@ -136,6 +139,7 @@ async function renderExercices(){
       materiel: Number(document.getElementById("ex-materiel").value),
       type: document.getElementById("ex-type").value,
       format: document.getElementById("ex-format").value.trim(),
+      polyarticulaire: document.getElementById("ex-poly").checked,
       contre_indications: valeursCochees(document, "ex-ci"),
     };
     let result;

@@ -24,6 +24,8 @@
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
 <script>
 const SECTIONS = [
   { title: "Profil & État civil", fields: [
@@ -48,7 +50,7 @@ const SECTIONS = [
   ]},
   { title: "Objectifs & Zones cibles", fields: [
       {id:"objectif", q:"Objectif principal", type:"choice", options:["Perte de poids","Tonus musculaire","Énergie au quotidien","Reprise de routine","Prise de masse","Endurance"]},
-      {id:"zones", q:"Zones prioritaires", type:"multichoice", options:["Bras","Dos","Fessiers","Jambes","Abdos","Épaules","Full body"]},
+      {id:"zones", q:"Zones prioritaires", type:"multichoice", options:["Pectoraux","Dos","Épaules","Trapèzes","Lombaires","Biceps","Triceps","Avant-bras","Abdominaux","Obliques","Fessiers","Quadriceps","Ischio-jambiers","Adducteurs","Mollets"]},
       {id:"effort", q:"Type d'effort souhaité", type:"choice", options:["Cardio uniquement","Renforcement uniquement","Mix cardio + renfo"]},
   ]},
   { title: "Nutrition & Préférences repas", sub: "Pour construire tes menus et listes de courses.", fields: [
@@ -255,23 +257,35 @@ function buildPlainText(answers){
 
 async function submitForm(){
   const prenom = state.answers.prenom || 'Client(e)';
-  try{
-    const res = await fetch('https://api.web3forms.com/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        access_key: WEB3FORMS_KEY,
-        subject: `Nouveau Bilan Client — ${prenom}`,
-        from_name: `Questionnaire Bilan Client — ${prenom}`,
-        email: COACH_EMAIL,
-        message: buildPlainText(state.answers),
-      })
-    });
-    const data = await res.json();
-    emailStatus = (res.ok && data.success) ? 'sent' : 'failed';
-  } catch(e){
-    emailStatus = 'failed';
-  }
+  const envoiEmail = (async () => {
+    try{
+      const res = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          access_key: WEB3FORMS_KEY,
+          subject: `Nouveau Bilan Client — ${prenom}`,
+          from_name: `Questionnaire Bilan Client — ${prenom}`,
+          email: COACH_EMAIL,
+          message: buildPlainText(state.answers),
+        })
+      });
+      const data = await res.json();
+      emailStatus = (res.ok && data.success) ? 'sent' : 'failed';
+    } catch(e){
+      emailStatus = 'failed';
+    }
+  })();
+
+  const enregistrement = (async () => {
+    try{
+      await supabaseClient.from("prospects").insert({ reponses: state.answers, converti: false });
+    } catch(e){
+      // L'email reste le filet de sécurité si l'enregistrement échoue.
+    }
+  })();
+
+  await Promise.allSettled([envoiEmail, enregistrement]);
   state.step = SECTIONS.length + 1;
   render();
 }

@@ -63,6 +63,11 @@ function exercicesValides(client){
   );
 }
 
+function preferPolyarticulaire(list){
+  const poly = list.filter(e => e.polyarticulaire);
+  return poly.length ? poly : list;
+}
+
 function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, preferIds){
   preferIds = preferIds || [];
   const nbCardio = Math.max(0, Math.round(nbExercices * ratioCardio));
@@ -75,13 +80,15 @@ function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, 
     if (prefere && choisis.filter(e=>e.type==="renfo").length < nbRenfo) choisis.push(prefere);
   });
 
+  // Les mouvements polyarticulaires (squat, développé, rowing, traction...) sont
+  // priorisés sur les exercices d'isolation, tant qu'il en reste dans la zone.
   const renfoParZone = zones.map(z => pool.filter(e => e.type === "renfo" && e.zone === z));
   let zi = 0, tentatives = 0;
   while (choisis.filter(e=>e.type==="renfo").length < nbRenfo && tentatives < nbExercices*20){
     tentatives++;
     const candidats = renfoParZone[zi % renfoParZone.length].filter(e => !choisis.includes(e));
     const frais = candidats.filter(e => !dejaUtilises.has(e.id));
-    const source = frais.length ? frais : candidats;
+    const source = preferPolyarticulaire(frais.length ? frais : candidats);
     if (source.length) choisis.push(source[Math.floor(Math.random()*source.length)]);
     zi++;
   }
@@ -133,7 +140,8 @@ function genererPlanningSport(client){
     const zones = zonesPourJour(typeJour, client.zonesPrioritaires, idx);
     dernierType = typeJour;
     const nbEx = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
-    const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds);
+    const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds)
+      .sort((a, b) => (b.polyarticulaire ? 1 : 0) - (a.polyarticulaire ? 1 : 0));
     const etirements = pickEtirements(zones, pool);
     return { jour, typeJour, exercices, etirements };
   });
@@ -225,7 +233,14 @@ function recettesValides(repasType, client){
 }
 
 function choisirRecette(repasType, client, utiliseesSemaine){
-  let candidats = recettesValides(repasType, client);
+  const valides = recettesValides(repasType, client);
+  const preferees = valides.filter(r => (client.recettesPreferees || []).includes(r.id) && !utiliseesSemaine.has(r.id));
+  if (preferees.length){
+    const choix = preferees[Math.floor(Math.random()*preferees.length)];
+    utiliseesSemaine.add(choix.id);
+    return choix;
+  }
+  let candidats = valides;
   const parObjectif = candidats.filter(r => r.profils.includes(client.objectif));
   if (parObjectif.length) candidats = parObjectif;
   if (!candidats.length) return null;
