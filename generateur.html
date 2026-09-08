@@ -687,6 +687,7 @@ async function enregistrerFiche(){
   }
   chargerListeClientes();
   renderSuivi(clienteActuelleId, result.data.prenom, result.data.objectif);
+  rerenderResultats();
 }
 
 // ---- Génération ----
@@ -736,6 +737,15 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
     </div>
 
     <h2 style="font-size:22px;">Planning de ${client.prenom}</h2>
+    ${clienteActuelleId ? `
+    <div class="field" style="margin:14px 0 20px;">
+      <label class="q">Lien du planning à envoyer à ${client.prenom} (WhatsApp, SMS...)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="lien-planning" value="${window.location.origin}${window.location.pathname.replace("generateur.html","")}mon-planning.html?id=${clienteActuelleId}" readonly style="font-size:12px;">
+        <button type="button" id="copier-lien-planning-btn" class="btn-ghost" style="width:auto;">Copier</button>
+      </div>
+      <div class="hint">Enregistre la fiche d'abord si tu viens de la modifier, pour que le lien reflète la dernière version.</div>
+    </div>` : `<div class="hint" style="margin:10px 0 20px;">Enregistre cette fiche pour obtenir un lien à envoyer à ${client.prenom}.</div>`}
     <div class="summary-stats">
       <div class="stat-block"><div class="n">${planSport.nbSeances}</div><div class="l">Séances / semaine</div></div>
       <div class="stat-block"><div class="n">${planRepas.proteinesCible}g</div><div class="l">Protéines / jour visées</div></div>
@@ -757,8 +767,8 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
         <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
         ${s.adaptee ? `<div class="day-meta" style="color:var(--terracotta-dark);">⚠ Séance adaptée — douleurs signalées, charge allégée et abdos à faible pression.</div>` : ""}
         <table class="plan-table">
-          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th></th></tr></thead>
-          <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td><td><button type="button" class="ex-remove-btn" data-jour="${s.jour}" data-idx="${i}" title="Retirer cet exercice">✕</button></td></tr>`).join("") || `<tr><td colspan="4">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
+          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th>Poids utilisé</th><th></th></tr></thead>
+          <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td><td><input type="number" step="0.5" class="ex-poids-input" data-jour="${s.jour}" data-idx="${i}" value="${e.poidsUtilise || ""}" placeholder="ex : 20" style="width:64px;"> kg</td><td><button type="button" class="ex-remove-btn" data-jour="${s.jour}" data-idx="${i}" title="Retirer cet exercice">✕</button></td></tr>`).join("") || `<tr><td colspan="5">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
         </table>
         <div class="ex-add-row" style="display:flex; gap:8px; margin-top:10px; align-items:center;">
           <select class="ex-add-select" data-jour="${s.jour}" style="flex:1;">
@@ -809,8 +819,25 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
   document.getElementById("enregistrer-btn").addEventListener("click", enregistrerFiche);
   document.getElementById("regenerer-btn").addEventListener("click", genererEtAfficher);
   document.getElementById("print-btn").addEventListener("click", () => window.print());
+  const lienPlanningInput = document.getElementById("lien-planning");
+  if (lienPlanningInput){
+    document.getElementById("copier-lien-planning-btn").addEventListener("click", () => {
+      navigator.clipboard.writeText(lienPlanningInput.value).then(() => {
+        const btn = document.getElementById("copier-lien-planning-btn");
+        btn.textContent = "Copié !";
+        setTimeout(() => { btn.textContent = "Copier"; }, 1500);
+      });
+    });
+  }
   resultats.querySelectorAll(".ex-remove-btn").forEach(btn => {
     btn.addEventListener("click", () => retirerExercice(btn.dataset.jour, Number(btn.dataset.idx)));
+  });
+  resultats.querySelectorAll(".ex-poids-input").forEach(input => {
+    input.addEventListener("change", () => {
+      const seance = dernierResultat.planSport.seances.find(s => s.jour === input.dataset.jour);
+      if (!seance) return;
+      seance.exercices[Number(input.dataset.idx)].poidsUtilise = input.value.trim();
+    });
   });
   resultats.querySelectorAll(".ex-add-btn").forEach(btn => {
     btn.addEventListener("click", () => {

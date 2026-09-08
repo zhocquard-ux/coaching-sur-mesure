@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mon Planning — Coaching Sur-Mesure</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+  </div>
+</header>
+
+<div class="gen-wrap" id="app" style="max-width:760px; margin:0 auto; padding:24px 16px 60px;">
+  <p style="text-align:center; color:var(--ink-light); padding:60px 0;">Chargement…</p>
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner"><a href="index.html" class="footer-back">← Retour au site</a></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+const ZONE_LABELS = {
+  pectoraux:"Pectoraux", dos:"Dos", epaules:"Épaules", trapezes:"Trapèzes", lombaires:"Lombaires",
+  biceps:"Biceps", triceps:"Triceps", avant_bras:"Avant-bras", abdominaux:"Abdominaux", obliques:"Obliques",
+  fessiers:"Fessiers", quadriceps:"Quadriceps", ischio_jambiers:"Ischio-jambiers", adducteurs:"Adducteurs",
+  mollets:"Mollets", full_body:"Full body / Cardio",
+};
+const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (matin)", dejeuner:"Déjeuner", gouter:"Goûter / collation (après-midi)", diner:"Dîner" };
+const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+
+const params = new URLSearchParams(window.location.search);
+const clienteId = params.get("id");
+
+async function charger(){
+  const app = document.getElementById("app");
+  if (!clienteId){
+    app.innerHTML = `<div class="card"><p>Lien invalide — demande à ton coach de te renvoyer ton lien personnel.</p></div>`;
+    return;
+  }
+  const { data, error } = await supabaseClient.rpc("get_planning_partage", { p_cliente_id: clienteId });
+  const row = data && data[0];
+  if (error || !row || !row.dernier_planning_sport){
+    app.innerHTML = `<div class="card"><p>Ton planning n'est pas encore prêt, ou le lien n'est plus valide — demande à ton coach de te le renvoyer.</p></div>`;
+    return;
+  }
+  render(row);
+}
+
+function render(row){
+  const app = document.getElementById("app");
+  const planSport = row.dernier_planning_sport;
+  const planRepas = row.dernier_planning_repas;
+  const liste = row.derniere_liste_courses || [];
+
+  const joursAffiches = [...planSport.seances.map(s => ({ ...s, repos:false })), ...(planSport.reposJours||[])]
+    .sort((a,b) => JOURS.indexOf(a.jour) - JOURS.indexOf(b.jour));
+
+  app.innerHTML = `
+    <div class="form-intro">
+      <div class="eyebrow">Coaching sport & nutrition</div>
+      <h1 style="font-size:26px; margin-top:6px;">Le planning de ${row.prenom || "toi"}</h1>
+      <p>Mis à jour le ${new Date(row.updated_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}. Note ici les poids que tu utilises pour suivre ta progression.</p>
+    </div>
+
+    <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
+    ${joursAffiches.map(s => s.repos ? `
+      <div class="plan-day">
+        <h3>${s.jour} — Repos</h3>
+        <div class="day-meta" style="color:var(--ink-light);">${s.suggestion}</div>
+      </div>
+    ` : `
+      <div class="plan-day" data-jour="${s.jour}">
+        <h3>${s.jour} — ${s.typeJour}</h3>
+        <table class="plan-table">
+          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th>Poids utilisé</th></tr></thead>
+          <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]||e.zone}</td><td>${e.format}</td><td><input type="number" step="0.5" class="ex-poids-input" data-jour="${s.jour}" data-nom="${e.nom.replace(/"/g,'&quot;')}" value="${e.poidsUtilise || ""}" placeholder="ex : 20" style="width:64px;"> kg</td></tr>`).join("")}</tbody>
+        </table>
+        ${s.etirements && s.etirements.length ? `
+        <div style="margin-top:10px;">
+          <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
+          <ul style="margin:6px 0 0; padding-left:18px; font-size:13.5px;">${s.etirements.map(e => `<li>${e.nom} — ${e.format}</li>`).join("")}</ul>
+        </div>` : ""}
+      </div>
+    `).join("")}
+
+    ${planRepas ? `
+    <h3 style="font-size:19px; margin:28px 0 12px;">Planning repas</h3>
+    ${planRepas.jours.map(j => `
+      <div class="plan-day">
+        <h3>${j.jour}</h3>
+        ${Object.keys(j.repas).map(slot => {
+          const r = j.repas[slot];
+          if (!r) return "";
+          return `
+          <details class="meal-row" style="display:block;">
+            <summary style="display:flex; justify-content:space-between; gap:10px; cursor:pointer; list-style:none;">
+              <span class="slot">${REPAS_LABELS[slot] || slot}</span>
+              <span>${r.nom}</span>
+            </summary>
+            <div class="meal-detail">
+              <strong>Ingrédients</strong> (1 portion) : ${r.ingredients.map(i=>`${i.nom} (${i.quantite} ${i.unite})`).join(", ")}
+              <div style="margin-top:8px;"><strong>Préparation</strong></div>
+              <ol style="margin:6px 0 0; padding-left:18px;">${(r.etapes||[]).map(e=>`<li>${e}</li>`).join("") || "<li>Pas d'étapes renseignées.</li>"}</ol>
+            </div>
+          </details>`;
+        }).join("")}
+      </div>
+    `).join("")}` : ""}
+
+    ${liste.length ? `
+    <h3 style="font-size:19px; margin:28px 0 12px;">Liste de courses (semaine)</h3>
+    <div class="card">
+      <div class="shopping-grid">
+        ${liste.map(i => `<div>${i.nom} — ${i.quantite} ${i.unite}</div>`).join("")}
+      </div>
+    </div>` : ""}
+  `;
+
+  app.querySelectorAll(".ex-poids-input").forEach(input => {
+    input.addEventListener("change", async () => {
+      const val = input.value.trim();
+      const poids = parseFloat(val.replace(",", "."));
+      if (isNaN(poids)) return;
+      await supabaseClient.rpc("set_poids_exercice", {
+        p_cliente_id: clienteId, p_jour: input.dataset.jour, p_nom_exercice: input.dataset.nom, p_poids: poids,
+      });
+    });
+  });
+}
+
+charger();
+</script>
+</body>
+</html>
