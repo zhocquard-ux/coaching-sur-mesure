@@ -62,11 +62,23 @@ function zonesPourJour(typeJour, zonesPrioritaires, indexFullBody){
   }
 }
 
+// En cas de règles douloureuses / endométriose / SOPK signalées, ou de
+// douleurs ponctuelles cochées pour la séance du jour, on écarte aussi les
+// exercices abdos/obliques à forte pression intra-abdominale (roulette,
+// relevé de jambes suspendu, rotations lestées...). Ce sont des adaptations
+// d'entraînement courantes, pas un avis médical — à ajuster au cas par cas.
+function problemesSanteEffectifs(client){
+  const base = client.problemesSante || [];
+  const sensible = (client.santeHormonale && client.santeHormonale.length) || client.douleurActuelle;
+  return sensible ? [...base, "abdo_intense"] : base;
+}
+
 function exercicesValides(client){
+  const problemes = problemesSanteEffectifs(client);
   return EXERCICES.filter(e =>
     e.niveau <= client.niveauTier &&
     e.materiel <= client.materielTier &&
-    !e.contre_indications.some(ci => client.problemesSante.includes(ci)) &&
+    !e.contre_indications.some(ci => problemes.includes(ci)) &&
     !(client.excludeIds || []).includes(e.id)
   );
 }
@@ -145,14 +157,22 @@ function suggestionJourRepos(client){
 }
 
 function genererPlanningSport(client){
-  const n = nbSeances(client.niveau, client.joursDispo.length);
-  const joursTries = JOURS.filter(j => client.joursDispo.includes(j));
+  const joursReposForces = client.joursRepos || [];
+  // Les jours cochés explicitement "repos" sont retirés du pool entraînable :
+  // le nombre de séances et leur répartition se calculent sur les jours
+  // restants, pas sur la disponibilité brute.
+  const joursEntrainables = client.joursDispo.filter(j => !joursReposForces.includes(j));
+  const n = nbSeances(client.niveau, joursEntrainables.length);
+  const joursTries = JOURS.filter(j => joursEntrainables.includes(j));
   const joursChoisis = choisirJours(joursTries, n);
   const split = getSplit(n);
   const pool = exercicesValides(client);
   const ratio = client.typeEffort === "cardio" ? 1 : client.typeEffort === "renfo" ? 0 : ratioCardioPour(client);
   const dejaUtilises = new Set();
   let dernierType = null;
+  // Douleurs signalées pour la séance du jour : on allège plutôt que d'annuler.
+  const nbExBase = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
+  const nbEx = client.douleurActuelle ? Math.max(3, nbExBase - 2) : nbExBase;
 
   const seances = joursChoisis.map((jour, idx) => {
     let typeJour = split[idx % split.length];
@@ -161,16 +181,16 @@ function genererPlanningSport(client){
     }
     const zones = zonesPourJour(typeJour, client.zonesPrioritaires, idx);
     dernierType = typeJour;
-    const nbEx = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
     const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds)
       .sort((a, b) => (b.polyarticulaire ? 1 : 0) - (a.polyarticulaire ? 1 : 0));
     const etirements = pickEtirements(zones, pool);
-    return { jour, typeJour, exercices, etirements };
+    return { jour, typeJour, exercices, etirements, adaptee: !!client.douleurActuelle };
   });
 
-  const reposJours = joursTries.filter(j => !joursChoisis.includes(j)).map(jour => ({
-    jour, repos: true, suggestion: suggestionJourRepos(client),
-  }));
+  const joursReposRestants = joursTries.filter(j => !joursChoisis.includes(j));
+  const reposJours = [...new Set([...joursReposForces.filter(j => client.joursDispo.includes(j)), ...joursReposRestants])]
+    .sort((a, b) => JOURS.indexOf(a) - JOURS.indexOf(b))
+    .map(jour => ({ jour, repos: true, suggestion: suggestionJourRepos(client) }));
 
   return { nbSeances: n, seances, reposJours };
 }
@@ -288,6 +308,13 @@ function choisirRecette(repasType, client, utiliseesSemaine){
     return choix;
   }
   let candidats = valides;
+  // Règles douloureuses / endométriose / SOPK / douleurs du jour : recettes
+  // plus riches en oméga-3, fer, magnésium proposées en priorité (adaptation
+  // nutritionnelle courante, ne remplace pas un avis médical).
+  if ((client.santeHormonale && client.santeHormonale.length) || client.douleurActuelle){
+    const antiInflammatoire = candidats.filter(r => (r.profils || []).includes("anti_inflammatoire"));
+    if (antiInflammatoire.length) candidats = antiInflammatoire;
+  }
   const parObjectif = candidats.filter(r => r.profils.includes(client.objectif) || (client.objectifSecondaire && r.profils.includes(client.objectifSecondaire)));
   if (parObjectif.length) candidats = parObjectif;
   if (!candidats.length) return null;

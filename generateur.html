@@ -42,6 +42,7 @@ const ZONE_LABELS = {
   full_body:"Full body / Cardio",
 };
 const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:"Poignets", hanches:"Hanches", chevilles:"Chevilles" };
+const SANTE_HORMONALE_LABELS = { regles_douloureuses:"Règles douloureuses", endometriose:"Endométriose", sopk:"SOPK (ovaires polykystiques)" };
 const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
 const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (matin)", dejeuner:"Déjeuner", gouter:"Goûter / collation (après-midi)", diner:"Dîner" };
 const OBJECTIF_LABELS = { perte_poids:"Perte de poids / sèche", prise_masse:"Prise de masse", tonus:"Tonification", energie:"Énergie au quotidien", reprise:"Reprise de routine", endurance:"Endurance" };
@@ -103,6 +104,8 @@ function exercicesParZone(){
 function renderForm(){
   const parZone = exercicesParZone();
   const joursOptions = JOURS.map(j => `<label class="checkbox-chip"><input type="checkbox" name="jour" value="${j}"> ${j}</label>`).join("");
+  const joursReposOptions = JOURS.map(j => `<label class="checkbox-chip"><input type="checkbox" name="jour-repos" value="${j}"> ${j}</label>`).join("");
+  const santeHormonaleOptions = Object.keys(SANTE_HORMONALE_LABELS).map(s => `<label class="checkbox-chip"><input type="checkbox" name="sante-hormonale" value="${s}"> ${SANTE_HORMONALE_LABELS[s]}</label>`).join("");
   const zonesOptions = Object.keys(ZONE_LABELS).filter(z => z !== "full_body").map(z => `<label class="checkbox-chip"><input type="checkbox" name="zone" value="${z}"> ${ZONE_LABELS[z]}</label>`).join("");
   const santeOptions = Object.keys(SANTE_LABELS).map(s => `<label class="checkbox-chip"><input type="checkbox" name="sante" value="${s}"> ${SANTE_LABELS[s]}</label>`).join("");
   const alimentOptions = Object.keys(ALIMENT_LABELS).map(a => `<label class="checkbox-chip"><input type="checkbox" name="aliment" value="${a}"> ${ALIMENT_LABELS[a]}</label>`).join("");
@@ -191,6 +194,19 @@ function renderForm(){
       <fieldset>
         <legend>Problèmes de santé / zones à ménager</legend>
         <div class="checkbox-list">${santeOptions}</div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Santé hormonale / menstruelle</label>
+          <div class="hint">Adapte automatiquement les séances et les recettes (évite les abdos à forte pression, privilégie des recettes riches en oméga-3/fer/magnésium) — ce sont des adaptations d'entraînement courantes, pas un avis médical.</div>
+          <div class="checkbox-list">${santeHormonaleOptions}</div>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label class="q">Maladie chronique / autre condition médicale</label>
+          <div class="hint">Info libre pour toi (ex : diabète, arthrose, maladie du conjoint suivi sur la même fiche...) — à prendre en compte manuellement dans les choix d'exercices.</div>
+          <textarea id="f-maladie-chronique" rows="2"></textarea>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label class="checkbox-chip"><input type="checkbox" id="f-douleur-actuelle"> Douleurs en ce moment — adapter la séance du jour (charge allégée, abdos à faible pression, nutrition anti-inflammatoire)</label>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -207,6 +223,11 @@ function renderForm(){
         <legend>Logistique d'entraînement</legend>
         <div class="gen-form-grid">
           <div class="field"><label class="q">Jours disponibles</label><div class="checkbox-list">${joursOptions}</div></div>
+          <div class="field">
+            <label class="q">Jour(s) de repos souhaité(s)</label>
+            <div class="hint">Parmi les jours disponibles — ce jour ne recevra jamais de séance, même si la cliente vient quand même à la salle</div>
+            <div class="checkbox-list">${joursReposOptions}</div>
+          </div>
           <div class="field"><label class="q">Durée par séance (min)</label><input type="number" id="f-duree" value="45"></div>
           <div class="field"><label class="q">Lieu</label>
             <select id="f-lieu"><option value="salle">Salle de sport</option><option value="maison">Maison</option><option value="exterieur">Extérieur</option><option value="mixte">Mixte</option></select>
@@ -343,9 +364,13 @@ function collecterClient(){
     typeEffort: document.getElementById("f-type-effort").value,
     zonesPrioritaires: valeursCochees("zone"),
     problemesSante: valeursCochees("sante"),
+    santeHormonale: valeursCochees("sante-hormonale"),
+    maladieChronique: document.getElementById("f-maladie-chronique").value.trim(),
+    douleurActuelle: document.getElementById("f-douleur-actuelle").checked,
     excludeIds: valeursCochees("exclude-exo"),
     preferIds: valeursCochees("prefer-exo"),
     joursDispo: valeursCochees("jour"),
+    joursRepos: valeursCochees("jour-repos"),
     dureeSeance: Number(document.getElementById("f-duree").value) || 45,
     lieu: document.getElementById("f-lieu").value,
     materiel: document.getElementById("f-materiel").value,
@@ -402,9 +427,13 @@ function remplirFormulaire(c){
   document.getElementById("f-sans-lactose").checked = !!c.sans_lactose;
   cocherValeurs("zone", c.zones_prioritaires);
   cocherValeurs("sante", c.problemes_sante);
+  cocherValeurs("sante-hormonale", c.sante_hormonale);
+  document.getElementById("f-maladie-chronique").value = c.maladie_chronique || "";
+  document.getElementById("f-douleur-actuelle").checked = !!c.douleur_actuelle;
   cocherValeurs("exclude-exo", c.exclude_exercices);
   cocherValeurs("prefer-exo", c.exercices_preferes);
   cocherValeurs("jour", c.jours_dispo);
+  cocherValeurs("jour-repos", c.jours_repos);
   cocherValeurs("aliment", c.aliments_evites);
   alimentsLibreCourants = (c.aliments_evites_libre || []).slice();
   renderAlimentsLibres();
@@ -522,7 +551,7 @@ async function ouvrirProspect(id){
       <div style="margin-top:10px; font-size:13.5px;">
         ${notes.map(([label, val]) => `<div style="margin-bottom:6px;"><strong>${label} :</strong> ${val}</div>`).join("")}
       </div>
-      <div class="hint" style="margin-top:10px;">Coche les cases correspondantes dans "Problèmes de santé" et "Exercices à exclure / préférés" ci-dessous après lecture.</div>
+      <div class="hint" style="margin-top:10px;">Coche les cases correspondantes dans "Problèmes de santé", "Santé hormonale / menstruelle" et "Exercices à exclure / préférés" ci-dessous après lecture — et note toute maladie chronique dans le champ dédié.</div>
     </div>` : "";
   window.scrollTo(0, document.getElementById("notes-prospect").offsetTop - 20);
 }
@@ -622,7 +651,10 @@ async function enregistrerFiche(){
     poids_actuel: client.poidsActuel, poids_souhaite: client.poidsSouhaite,
     niveau: client.niveau, type_effort: client.typeEffort,
     zones_prioritaires: client.zonesPrioritaires, problemes_sante: client.problemesSante,
+    sante_hormonale: client.santeHormonale, maladie_chronique: client.maladieChronique || null,
+    douleur_actuelle: client.douleurActuelle,
     exclude_exercices: client.excludeIds, exercices_preferes: client.preferIds, jours_dispo: client.joursDispo,
+    jours_repos: client.joursRepos,
     duree_seance: client.dureeSeance, lieu: client.lieu, materiel: client.materiel,
     moment_prefere: client.momentPrefere, heure_reveil: client.heureReveilRaw, heure_debut_travail: client.heureDebutTravailRaw,
     trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail, tampon_repas: client.tamponRepas,
@@ -697,6 +729,7 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
       <div class="plan-day">
         <h3>${s.jour} — ${s.typeJour}</h3>
         <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
+        ${s.adaptee ? `<div class="day-meta" style="color:var(--terracotta-dark);">⚠ Séance adaptée — douleurs signalées, charge allégée et abdos à faible pression.</div>` : ""}
         <table class="plan-table">
           <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th></tr></thead>
           <tbody>${s.exercices.map(e => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td></tr>`).join("") || `<tr><td colspan="3">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
