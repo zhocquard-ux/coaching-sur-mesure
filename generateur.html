@@ -45,6 +45,7 @@ const SANTE_LABELS = { genoux:"Genoux", dos:"Dos", epaules:"Épaules", poignets:
 const ALIMENT_LABELS = { gluten:"Gluten", lactose:"Lactose", oeuf:"Œuf", poisson:"Poisson", fruits_de_mer:"Fruits de mer", porc:"Porc", noix:"Noix / oléagineux", arachides:"Arachides", soja:"Soja" };
 const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (matin)", dejeuner:"Déjeuner", gouter:"Goûter / collation (après-midi)", diner:"Dîner" };
 const OBJECTIF_LABELS = { perte_poids:"Perte de poids / sèche", prise_masse:"Prise de masse", tonus:"Tonification", energie:"Énergie au quotidien", reprise:"Reprise de routine", endurance:"Endurance" };
+const SUPERMARCHE_LABELS = { lidl:"Lidl", aldi:"Aldi", intermarche:"Intermarché", leclerc:"Leclerc", carrefour:"Carrefour", auchan:"Auchan", super_u:"Super U", casino:"Casino", monoprix:"Monoprix" };
 const REPAS_DEFAUT = {
   prise_masse: ["petit_dej","collation_matin","dejeuner","gouter","diner"],
   tonus: ["petit_dej","dejeuner","gouter","diner"],
@@ -164,8 +165,12 @@ function renderForm(){
           <div class="field"><label class="q">Sexe</label>
             <select id="f-sexe"><option value="femme">Femme</option><option value="homme">Homme</option><option value="autre">Autre</option></select>
           </div>
-          <div class="field"><label class="q">Objectif</label>
+          <div class="field"><label class="q">Objectif principal</label>
             <select id="f-objectif">${Object.keys(OBJECTIF_LABELS).map(o=>`<option value="${o}">${OBJECTIF_LABELS[o]}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label class="q">Objectif secondaire</label>
+            <div class="hint">Ex : perte de poids + prise de muscle en même temps</div>
+            <select id="f-objectif-secondaire"><option value="">Aucun</option>${Object.keys(OBJECTIF_LABELS).map(o=>`<option value="${o}">${OBJECTIF_LABELS[o]}</option>`).join("")}</select>
           </div>
           <div class="field"><label class="q">Poids actuel (kg)</label><input type="number" id="f-poids-actuel" value="70"></div>
           <div class="field"><label class="q">Poids souhaité (kg)</label><input type="number" id="f-poids-souhaite"></div>
@@ -212,6 +217,10 @@ function renderForm(){
           <div class="field"><label class="q">Moment préféré</label>
             <select id="f-moment"><option value="matin">Matin</option><option value="midi">Midi</option><option value="soir">Soir</option></select>
           </div>
+          <div class="field"><label class="q">Délai souhaité pour la transformation (mois)</label>
+            <div class="hint">Utilisé pour proposer de la marche/activité légère les jours de repos si le délai est court</div>
+            <input type="number" id="f-delai-mois" min="0">
+          </div>
         </div>
         <div id="horaire-fields" class="gen-form-grid" style="margin-top:16px;">
           <div class="field"><label class="q">Heure de réveil</label><input type="time" id="f-heure-reveil" value="06:30"></div>
@@ -246,6 +255,11 @@ function renderForm(){
           ${preferRecettesHtml}
         </div>
         <div class="field" style="margin-top:14px;">
+          <label class="q">Supermarché de référence</label>
+          <div class="hint">Pour que les prix affichés soient cohérents avec l'enseigne fréquentée</div>
+          <select id="f-supermarche">${Object.keys(SUPERMARCHE_LABELS).map(s=>`<option value="${s}" ${s==="leclerc"?"selected":""}>${SUPERMARCHE_LABELS[s]}</option>`).join("")}</select>
+        </div>
+        <div class="field" style="margin-top:14px;">
           <label class="q">Budget courses / semaine (€)</label>
           <div class="hint">Laisse vide pour ne pas limiter — sinon le générateur privilégie les recettes économiques</div>
           <input type="number" id="f-budget" min="0" step="1">
@@ -261,10 +275,16 @@ function renderForm(){
   document.getElementById("f-moment").addEventListener("change", e => {
     document.getElementById("horaire-fields").style.display = e.target.value === "matin" ? "grid" : "none";
   });
-  document.getElementById("f-objectif").addEventListener("change", e => {
-    const defaut = REPAS_DEFAUT[e.target.value] || ["petit_dej","dejeuner","diner"];
+  function appliquerRepasParDefaut(){
+    const principal = document.getElementById("f-objectif").value;
+    const secondaire = document.getElementById("f-objectif-secondaire").value;
+    const defautPrincipal = REPAS_DEFAUT[principal] || ["petit_dej","dejeuner","diner"];
+    const defautSecondaire = secondaire ? (REPAS_DEFAUT[secondaire] || []) : [];
+    const defaut = [...new Set([...defautPrincipal, ...defautSecondaire])];
     document.querySelectorAll('input[name="repas"]').forEach(cb => { cb.checked = defaut.includes(cb.value); });
-  });
+  }
+  document.getElementById("f-objectif").addEventListener("change", appliquerRepasParDefaut);
+  document.getElementById("f-objectif-secondaire").addEventListener("change", appliquerRepasParDefaut);
   document.getElementById("gen-form").addEventListener("submit", e => { e.preventDefault(); genererEtAfficher(); });
   document.getElementById("nouvelle-fiche-btn").addEventListener("click", nouvelleFiche);
   document.getElementById("ajouter-aliment-libre-btn").addEventListener("click", ajouterAlimentLibre);
@@ -314,6 +334,8 @@ function collecterClient(){
     age: Number(document.getElementById("f-age").value) || 30,
     sexe: document.getElementById("f-sexe").value,
     objectif: document.getElementById("f-objectif").value,
+    objectifSecondaire: document.getElementById("f-objectif-secondaire").value || null,
+    delaiMois: document.getElementById("f-delai-mois").value ? Number(document.getElementById("f-delai-mois").value) : null,
     poidsActuel: Number(document.getElementById("f-poids-actuel").value) || 60,
     poidsSouhaite: Number(document.getElementById("f-poids-souhaite").value) || null,
     niveau: document.getElementById("f-niveau").value,
@@ -344,6 +366,7 @@ function collecterClient(){
     alimentsEvitesLibre: alimentsLibreCourants.slice(),
     repasInclus: valeursCochees("repas"),
     recettesPreferees: valeursCochees("prefer-recette"),
+    supermarche: document.getElementById("f-supermarche").value,
     budgetSemaine: document.getElementById("f-budget").value ? Number(document.getElementById("f-budget").value) : null,
   };
 }
@@ -355,6 +378,8 @@ function remplirFormulaire(c){
   document.getElementById("f-age").value = c.age || 30;
   document.getElementById("f-sexe").value = c.sexe || "femme";
   document.getElementById("f-objectif").value = c.objectif || "perte_poids";
+  document.getElementById("f-objectif-secondaire").value = c.objectif_secondaire || "";
+  document.getElementById("f-delai-mois").value = c.delai_mois != null ? c.delai_mois : "";
   document.getElementById("f-poids-actuel").value = c.poids_actuel || 70;
   document.getElementById("f-poids-souhaite").value = c.poids_souhaite || "";
   document.getElementById("f-niveau").value = c.niveau || "debutant";
@@ -369,6 +394,7 @@ function remplirFormulaire(c){
   document.getElementById("f-trajet-ds").value = c.trajet_domicile_salle || 0;
   document.getElementById("f-trajet-st").value = c.trajet_salle_travail || 0;
   document.getElementById("f-tampon-repas").value = c.tampon_repas != null ? c.tampon_repas : 60;
+  document.getElementById("f-supermarche").value = c.supermarche || "leclerc";
   document.getElementById("f-budget").value = c.budget_semaine != null ? c.budget_semaine : "";
   document.getElementById("f-vegetarien").checked = !!c.vegetarien;
   document.getElementById("f-vegan").checked = !!c.vegan;
@@ -449,7 +475,9 @@ function mapProspectToClient(r){
     prenom: (r.prenom || "").split(" ")[0] || r.prenom,
     email: r.email, telephone: r.telephone,
     age: r.age ? Number(r.age) : undefined,
-    objectif: OBJECTIF_MAP[r.objectif],
+    objectif: OBJECTIF_MAP[(r.objectif || [])[0]],
+    objectif_secondaire: OBJECTIF_MAP[(r.objectif || [])[1]],
+    delai_mois: r.delai_mois ? Number(r.delai_mois) : undefined,
     poids_actuel: r.poids_actuel ? Number(r.poids_actuel) : undefined,
     poids_souhaite: r.poids_objectif ? Number(r.poids_objectif) : undefined,
     niveau: NIVEAU_MAP[r.niveau],
@@ -589,7 +617,8 @@ async function enregistrerFiche(){
   const { client, planSport, planRepas, liste } = dernierResultat;
   const row = {
     prenom: client.prenom, email: client.email || null, telephone: client.telephone || null,
-    age: client.age, sexe: client.sexe, objectif: client.objectif,
+    age: client.age, sexe: client.sexe, objectif: client.objectif, objectif_secondaire: client.objectifSecondaire,
+    delai_mois: client.delaiMois,
     poids_actuel: client.poidsActuel, poids_souhaite: client.poidsSouhaite,
     niveau: client.niveau, type_effort: client.typeEffort,
     zones_prioritaires: client.zonesPrioritaires, problemes_sante: client.problemesSante,
@@ -599,7 +628,7 @@ async function enregistrerFiche(){
     trajet_domicile_salle: client.trajetDomicileSalle, trajet_salle_travail: client.trajetSalleTravail, tampon_repas: client.tamponRepas,
     vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
     aliments_evites: client.alimentsEvites, aliments_evites_libre: client.alimentsEvitesLibre, repas_inclus: client.repasInclus,
-    recettes_preferees: client.recettesPreferees, budget_semaine: client.budgetSemaine,
+    recettes_preferees: client.recettesPreferees, supermarche: client.supermarche, budget_semaine: client.budgetSemaine,
     dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
   };
   const btn = document.getElementById("enregistrer-btn");
@@ -639,7 +668,7 @@ function genererEtAfficher(){
 
 function afficherResultats(client, planSport, planRepas, liste, horaire){
   const resultats = document.getElementById("resultats");
-  const coutEstime = estimerCoutListe(liste);
+  const coutEstime = estimerCoutListe(liste, client.supermarche);
   const surBudget = client.budgetSemaine && coutEstime > client.budgetSemaine;
   resultats.innerHTML = `
     <div class="results-actions">
@@ -659,7 +688,12 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
     ${horaire ? `<div class="card" style="margin-bottom:24px;">${horaire.possible ? `<strong>Créneau type :</strong> ${horaire.resume}` : `<strong style="color:var(--terracotta-dark);">⚠ ${horaire.message}</strong>`}</div>` : ""}
 
     <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
-    ${planSport.seances.map(s => `
+    ${[...planSport.seances.map(s => ({ ...s, repos:false })), ...planSport.reposJours].sort((a,b) => JOURS.indexOf(a.jour) - JOURS.indexOf(b.jour)).map(s => s.repos ? `
+      <div class="plan-day">
+        <h3>${s.jour} — Repos</h3>
+        <div class="day-meta" style="color:var(--ink-light);">${s.suggestion}</div>
+      </div>
+    ` : `
       <div class="plan-day">
         <h3>${s.jour} — ${s.typeJour}</h3>
         <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
@@ -698,10 +732,10 @@ function afficherResultats(client, planSport, planRepas, liste, horaire){
       </div>
     `).join("")}
 
-    <h3 style="font-size:19px; margin:28px 0 12px;">Liste de courses (semaine)</h3>
+    <h3 style="font-size:19px; margin:28px 0 12px;">Liste de courses (semaine) — prix ${SUPERMARCHE_LABELS[client.supermarche] || "indicatifs"}</h3>
     <div class="card">
       <div class="shopping-grid">
-        ${liste.map(i => `<div>${i.nom} — ${i.quantite} ${i.unite}</div>`).join("")}
+        ${liste.map(i => `<div>${i.nom} — ${i.quantite} ${i.unite} <span style="color:var(--ink-light); font-size:12px;">(${(i.quantite * prixIngredient(i.nom, i.unite, client.supermarche)).toFixed(2)}€)</span></div>`).join("")}
       </div>
     </div>
   `;

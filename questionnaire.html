@@ -49,7 +49,8 @@ const SECTIONS = [
       {id:"materiel", q:"Matériel disponible à la maison", type:"choice", options:["Aucun","Quelques accessoires","Équipement complet"]},
   ]},
   { title: "Objectifs & Zones cibles", fields: [
-      {id:"objectif", q:"Objectif principal", type:"choice", options:["Perte de poids","Tonus musculaire","Énergie au quotidien","Reprise de routine","Prise de masse","Endurance"]},
+      {id:"objectif", q:"Objectif(s)", type:"multichoice", max:2, hint:"Jusqu'à 2 — ex : perte de poids + prise de muscle en même temps", options:["Perte de poids","Tonus musculaire","Énergie au quotidien","Reprise de routine","Prise de masse","Endurance"]},
+      {id:"delai_mois", q:"Dans combien de mois veux-tu atteindre ton objectif ?", type:"number", hint:"Facultatif — utilisé pour proposer de la marche/activité légère les jours de repos si le délai est court"},
       {id:"zones", q:"Zones prioritaires", type:"multichoice", options:["Pectoraux","Dos","Épaules","Trapèzes","Lombaires","Biceps","Triceps","Avant-bras","Abdominaux","Obliques","Fessiers","Quadriceps","Ischio-jambiers","Adducteurs","Mollets"]},
       {id:"effort", q:"Type d'effort souhaité", type:"choice", options:["Cardio uniquement","Renforcement uniquement","Mix cardio + renfo"]},
   ]},
@@ -104,7 +105,7 @@ function renderChoice(field){
   const val = state.answers[field.id];
   const isMulti = field.type === 'multichoice';
   const selected = isMulti ? (val || []) : val;
-  return `<div class="choices" data-field="${field.id}" data-multi="${isMulti}">
+  return `<div class="choices" data-field="${field.id}" data-multi="${isMulti}" data-max="${field.max || ''}">
     ${field.options.map(opt => {
       const isSel = isMulti ? selected.includes(opt) : selected === opt;
       return `<div class="choice ${isSel ? 'selected '+(isMulti?'multi':'') : ''}" data-value="${opt}">${opt}</div>`;
@@ -305,7 +306,9 @@ function bindFormEvents(root){
         const value = chip.dataset.value;
         if(isMulti){
           let arr = state.answers[fieldId] || [];
+          const max = Number(group.dataset.max) || 0;
           if(arr.includes(value)) arr = arr.filter(v => v !== value);
+          else if(max && arr.length >= max) { alert(`Choisis au maximum ${max} options.`); return; }
           else arr = [...arr, value];
           state.answers[fieldId] = arr;
         } else {

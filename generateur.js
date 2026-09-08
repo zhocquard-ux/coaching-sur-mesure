@@ -6,6 +6,14 @@ const NIVEAU_TIER = { debutant:0, intermediaire:1, avance:2 };
 const MATERIEL_TIER = { aucun:0, quelques_accessoires:1, complet:2 };
 const RATIO_CARDIO = { perte_poids:0.6, tonus:0.2, energie:0.4, reprise:0.4, endurance:0.7 };
 
+// Avec deux objectifs, on prend la moyenne des deux ratios cardio/renfo.
+function ratioCardioPour(client){
+  const r1 = RATIO_CARDIO[client.objectif] ?? 0.4;
+  if (!client.objectifSecondaire) return r1;
+  const r2 = RATIO_CARDIO[client.objectifSecondaire] ?? 0.4;
+  return (r1 + r2) / 2;
+}
+
 function minutesToHHMM(min){
   const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
   const m = Math.floor(((min % 1440) + 1440) % 1440 % 60);
@@ -122,13 +130,27 @@ function pickEtirements(zones, pool){
   return choisis;
 }
 
+// Beaucoup de clientes se rendent à la salle même les jours où aucune séance
+// n'est prévue (routine plus simple à suivre) — on leur donne donc une
+// consigne claire pour ce jour-là plutôt que de le laisser vide. Si la
+// transformation est voulue rapidement et que l'objectif s'y prête, on
+// suggère une activité légère hors salle (marche...) plutôt qu'un repos pur.
+function suggestionJourRepos(client){
+  const objectifsCardio = ["perte_poids", "energie", "endurance"];
+  const viseCardio = objectifsCardio.includes(client.objectif) || objectifsCardio.includes(client.objectifSecondaire);
+  if (client.delaiMois && client.delaiMois <= 4 && viseCardio){
+    return "Marche rapide 30-45 min ou vélo léger — activité hors salle recommandée vu le délai visé.";
+  }
+  return "Repos — pas de séance prévue. Étirements légers ou marche tranquille si tu en as envie, sans obligation.";
+}
+
 function genererPlanningSport(client){
   const n = nbSeances(client.niveau, client.joursDispo.length);
   const joursTries = JOURS.filter(j => client.joursDispo.includes(j));
   const joursChoisis = choisirJours(joursTries, n);
   const split = getSplit(n);
   const pool = exercicesValides(client);
-  const ratio = client.typeEffort === "cardio" ? 1 : client.typeEffort === "renfo" ? 0 : (RATIO_CARDIO[client.objectif] ?? 0.4);
+  const ratio = client.typeEffort === "cardio" ? 1 : client.typeEffort === "renfo" ? 0 : ratioCardioPour(client);
   const dejaUtilises = new Set();
   let dernierType = null;
 
@@ -146,7 +168,11 @@ function genererPlanningSport(client){
     return { jour, typeJour, exercices, etirements };
   });
 
-  return { nbSeances: n, seances };
+  const reposJours = joursTries.filter(j => !joursChoisis.includes(j)).map(jour => ({
+    jour, repos: true, suggestion: suggestionJourRepos(client),
+  }));
+
+  return { nbSeances: n, seances, reposJours };
 }
 
 function placementHoraire(client){
@@ -197,18 +223,31 @@ const PRIX_INGREDIENTS = {
 };
 const PRIX_DEFAUT = { g:0.005, ml:0.003, "pièce":0.5, tranche:0.15, tranches:0.15, portion:1.2 };
 
-function prixIngredient(nom, unite){
-  if (PRIX_INGREDIENTS[nom] != null) return PRIX_INGREDIENTS[nom];
-  return PRIX_DEFAUT[unite] != null ? PRIX_DEFAUT[unite] : 0.005;
-}
-function estimerCoutRecette(r){
-  return r.ingredients.reduce((total, ing) => total + ing.quantite * prixIngredient(ing.nom, ing.unite), 0);
-}
-function estimerCoutListe(liste){
-  return liste.reduce((total, i) => total + i.quantite * prixIngredient(i.nom, i.unite), 0);
+// Indices de prix relatifs par enseigne (base 1.0 = niveau de prix moyen
+// observé chez Leclerc/Intermarché). Ce ne sont pas des prix scrapés en
+// temps réel — juste un positionnement réaliste pour rendre l'estimation
+// cohérente d'une enseigne à l'autre.
+const SUPERMARCHE_MULTIPLIER = {
+  lidl: 0.82, aldi: 0.83, intermarche: 0.97, leclerc: 1.0,
+  carrefour: 1.05, auchan: 1.04, super_u: 1.02, casino: 1.08, monoprix: 1.35,
+};
+
+function multiplicateurSupermarche(supermarche){
+  return SUPERMARCHE_MULTIPLIER[supermarche] != null ? SUPERMARCHE_MULTIPLIER[supermarche] : 1.0;
 }
 
-function quotaProteines(poids, objectif, age){
+function prixIngredient(nom, unite, supermarche){
+  const base = PRIX_INGREDIENTS[nom] != null ? PRIX_INGREDIENTS[nom] : (PRIX_DEFAUT[unite] != null ? PRIX_DEFAUT[unite] : 0.005);
+  return base * multiplicateurSupermarche(supermarche);
+}
+function estimerCoutRecette(r, supermarche){
+  return r.ingredients.reduce((total, ing) => total + ing.quantite * prixIngredient(ing.nom, ing.unite, supermarche), 0);
+}
+function estimerCoutListe(liste, supermarche){
+  return liste.reduce((total, i) => total + i.quantite * prixIngredient(i.nom, i.unite, supermarche), 0);
+}
+
+function quotaProteinesUnObjectif(poids, objectif, age){
   const coeffs = {
     perte_poids:[1.6,2.0], tonus:[1.8,2.2], prise_masse:[1.8,2.2],
     energie:[1.2,1.6], reprise:[1.2,1.6], endurance:[1.2,1.6],
@@ -216,6 +255,14 @@ function quotaProteines(poids, objectif, age){
   const [lo,hi] = coeffs[objectif] || [1.4,1.8];
   const coeff = age >= 50 ? hi : (lo+hi)/2;
   return Math.round(poids * coeff);
+}
+
+// Avec deux objectifs (ex: perte de poids + prise de muscle), on retient le
+// quota le plus élevé des deux pour protéger la masse musculaire.
+function quotaProteines(poids, objectif, age, objectifSecondaire){
+  const principal = quotaProteinesUnObjectif(poids, objectif, age);
+  if (!objectifSecondaire) return principal;
+  return Math.max(principal, quotaProteinesUnObjectif(poids, objectifSecondaire, age));
 }
 
 function recettesValides(repasType, client){
@@ -241,7 +288,7 @@ function choisirRecette(repasType, client, utiliseesSemaine){
     return choix;
   }
   let candidats = valides;
-  const parObjectif = candidats.filter(r => r.profils.includes(client.objectif));
+  const parObjectif = candidats.filter(r => r.profils.includes(client.objectif) || (client.objectifSecondaire && r.profils.includes(client.objectifSecondaire)));
   if (parObjectif.length) candidats = parObjectif;
   if (!candidats.length) return null;
   const fraiches = candidats.filter(r => !utiliseesSemaine.has(r.id));
@@ -267,7 +314,7 @@ function genererPlanningRepas(client){
     });
     return { jour, repas };
   });
-  return { proteinesCible: quotaProteines(client.poidsActuel, client.objectif, client.age), jours };
+  return { proteinesCible: quotaProteines(client.poidsActuel, client.objectif, client.age, client.objectifSecondaire), jours };
 }
 
 function genererListeCourses(planningRepas){
