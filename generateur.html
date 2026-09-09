@@ -156,6 +156,7 @@ function renderForm(){
     <div id="notes-prospect"></div>
 
     <div id="suivi-hebdo"></div>
+    <div id="progression-exercices"></div>
 
     <form id="gen-form">
       <fieldset>
@@ -453,6 +454,7 @@ function nouvelleFiche(){
   document.getElementById("horaire-fields").style.display = "grid";
   document.getElementById("resultats").innerHTML = "";
   document.getElementById("suivi-hebdo").innerHTML = "";
+  document.getElementById("progression-exercices").innerHTML = "";
   document.getElementById("notes-prospect").innerHTML = "";
   window.scrollTo(0,0);
 }
@@ -573,6 +575,7 @@ async function chargerCliente(id){
     afficherResultats(client, dernierResultat.planSport, dernierResultat.planRepas, dernierResultat.liste, horaire, true);
   }
   renderSuivi(data.id, data.prenom, data.objectif);
+  renderProgression(data.id);
   window.scrollTo(0,0);
 }
 
@@ -592,6 +595,59 @@ function coherenceBadge(objectif, deltaPoids){
   return conforme
     ? `<span style="color:var(--accent, #5F6E3F); font-weight:600;">✓ conforme à l'objectif</span>`
     : `<span style="color:var(--terracotta-dark);">⚠ à l'inverse de l'objectif</span>`;
+}
+
+function sparklinePoids(points){
+  const width = 280, height = 76, pad = 16;
+  const xs = points.map((_,i) => points.length === 1 ? width/2 : pad + i * (width - 2*pad) / (points.length - 1));
+  const values = points.map(p => p.poids);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  const ys = values.map(v => height - pad - ((v - min) / range) * (height - 2*pad));
+  const path = xs.map((x,i) => `${i===0?'M':'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+  const last = points.length - 1;
+  const evolution = points[last].poids - points[0].poids;
+  const evoTxt = evolution > 0 ? `+${evolution}kg depuis le début` : evolution < 0 ? `${evolution}kg depuis le début` : "stable depuis le début";
+  const evoColor = evolution > 0 ? "#56633A" : evolution < 0 ? "#B5573B" : "#7C6C56";
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="Évolution du poids sur ${points.length} séances">
+      <path d="${path}" fill="none" stroke="#6F7F4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${xs.map((x,i) => `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="${i===last?4.5:3}" fill="${i===last?'#56633A':'#6F7F4A'}"><title>${points[i].dateLabel} — ${points[i].poids}kg${points[i].repetitions?' × '+points[i].repetitions+' reps':''}</title></circle>`).join('')}
+    </svg>
+    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-light); margin-top:2px;">
+      <span>${points[0].dateLabel} · ${points[0].poids}kg</span>
+      <span style="font-weight:600; color:${evoColor};">${points[last].dateLabel} · ${points[last].poids}kg (${evoTxt})</span>
+    </div>
+  `;
+}
+
+async function renderProgression(id){
+  const box = document.getElementById("progression-exercices");
+  if (!id){ box.innerHTML = ""; return; }
+  const { data, error } = await supabaseClient.rpc("get_performances", { p_cliente_id: id });
+  if (error || !data || !data.length){ box.innerHTML = ""; return; }
+  const parExercice = {};
+  data.forEach(p => {
+    if (p.poids == null) return;
+    (parExercice[p.nom_exercice] = parExercice[p.nom_exercice] || []).push(p);
+  });
+  const exercicesAvecHistorique = Object.keys(parExercice).filter(nom => parExercice[nom].length >= 2);
+  if (!exercicesAvecHistorique.length){ box.innerHTML = ""; return; }
+  box.innerHTML = `
+    <fieldset>
+      <legend>Progression (poids notés par la cliente)</legend>
+      ${exercicesAvecHistorique.map(nom => {
+        const points = parExercice[nom].map(p => ({
+          poids: Number(p.poids), repetitions: p.repetitions,
+          dateLabel: new Date(p.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"short" }),
+        }));
+        return `<div style="margin-bottom:16px;">
+          <strong style="font-size:14px;">${nom}</strong>
+          ${sparklinePoids(points)}
+        </div>`;
+      }).join("")}
+    </fieldset>
+  `;
 }
 
 async function renderSuivi(id, prenom, objectif){
@@ -687,6 +743,7 @@ async function enregistrerFiche(){
   }
   chargerListeClientes();
   renderSuivi(clienteActuelleId, result.data.prenom, result.data.objectif);
+  renderProgression(clienteActuelleId);
   rerenderResultats();
 }
 

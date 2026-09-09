@@ -36,6 +36,8 @@ const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"
 
 const params = new URLSearchParams(window.location.search);
 const clienteId = params.get("id");
+let performances = [];
+let dernierePlanning = null;
 
 async function charger(){
   const app = document.getElementById("app");
@@ -43,13 +45,78 @@ async function charger(){
     app.innerHTML = `<div class="card"><p>Lien invalide — demande à ton coach de te renvoyer ton lien personnel.</p></div>`;
     return;
   }
-  const { data, error } = await supabaseClient.rpc("get_planning_partage", { p_cliente_id: clienteId });
+  const [{ data, error }, perfRes] = await Promise.all([
+    supabaseClient.rpc("get_planning_partage", { p_cliente_id: clienteId }),
+    supabaseClient.rpc("get_performances", { p_cliente_id: clienteId }),
+  ]);
   const row = data && data[0];
   if (error || !row || !row.dernier_planning_sport){
     app.innerHTML = `<div class="card"><p>Ton planning n'est pas encore prêt, ou le lien n'est plus valide — demande à ton coach de te le renvoyer.</p></div>`;
     return;
   }
+  performances = perfRes.data || [];
+  dernierePlanning = row;
   render(row);
+}
+
+async function rafraichirPerformances(){
+  const { data } = await supabaseClient.rpc("get_performances", { p_cliente_id: clienteId });
+  performances = data || [];
+  const scrollY = window.scrollY;
+  render(dernierePlanning);
+  window.scrollTo(0, scrollY);
+}
+
+function dernierePerf(nomExercice){
+  const hist = performances.filter(p => p.nom_exercice === nomExercice);
+  return hist.length ? hist[hist.length - 1] : null;
+}
+
+function sparkline(points){
+  const width = 280, height = 76, pad = 16;
+  const xs = points.map((_,i) => points.length === 1 ? width/2 : pad + i * (width - 2*pad) / (points.length - 1));
+  const values = points.map(p => p.poids);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  const ys = values.map(v => height - pad - ((v - min) / range) * (height - 2*pad));
+  const path = xs.map((x,i) => `${i===0?'M':'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+  const last = points.length - 1;
+  const evolution = points[last].poids - points[0].poids;
+  const evoTxt = evolution > 0 ? `+${evolution}kg depuis le début` : evolution < 0 ? `${evolution}kg depuis le début` : "stable depuis le début";
+  const evoColor = evolution > 0 ? "#56633A" : evolution < 0 ? "#B5573B" : "#7C6C56";
+  return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="Évolution du poids sur ${points.length} séances">
+      <path d="${path}" fill="none" stroke="#6F7F4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${xs.map((x,i) => `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="${i===last?4.5:3}" fill="${i===last?'#56633A':'#6F7F4A'}"><title>${points[i].dateLabel} — ${points[i].poids}kg${points[i].repetitions?' × '+points[i].repetitions+' reps':''}</title></circle>`).join('')}
+    </svg>
+    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-light); margin-top:2px;">
+      <span>${points[0].dateLabel} · ${points[0].poids}kg</span>
+      <span style="font-weight:600; color:${evoColor};">${points[last].dateLabel} · ${points[last].poids}kg (${evoTxt})</span>
+    </div>
+  `;
+}
+
+function renderProgression(){
+  const parExercice = {};
+  performances.forEach(p => {
+    if (p.poids == null) return;
+    (parExercice[p.nom_exercice] = parExercice[p.nom_exercice] || []).push(p);
+  });
+  const exercicesAvecHistorique = Object.keys(parExercice).filter(nom => parExercice[nom].length >= 2);
+  if (!exercicesAvecHistorique.length) return "";
+  return `
+    <h3 style="font-size:19px; margin:28px 0 12px;">Ma progression</h3>
+    ${exercicesAvecHistorique.map(nom => {
+      const points = parExercice[nom].map(p => ({
+        poids: Number(p.poids), repetitions: p.repetitions,
+        dateLabel: new Date(p.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"short" }),
+      }));
+      return `<div class="card" style="margin-bottom:14px;">
+        <strong style="font-size:14px;">${nom}</strong>
+        ${sparkline(points)}
+      </div>`;
+    }).join("")}
+  `;
 }
 
 function render(row){
@@ -65,7 +132,7 @@ function render(row){
     <div class="form-intro">
       <div class="eyebrow">Coaching sport & nutrition</div>
       <h1 style="font-size:26px; margin-top:6px;">Le planning de ${row.prenom || "toi"}</h1>
-      <p>Mis à jour le ${new Date(row.updated_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}. Note ici les poids que tu utilises pour suivre ta progression.</p>
+      <p>Mis à jour le ${new Date(row.updated_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}. Enregistre le poids et les répétitions à chaque séance pour suivre ta progression au fil des semaines.</p>
     </div>
 
     <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
@@ -78,8 +145,19 @@ function render(row){
       <div class="plan-day" data-jour="${s.jour}">
         <h3>${s.jour} — ${s.typeJour}</h3>
         <table class="plan-table">
-          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th>Poids utilisé</th></tr></thead>
-          <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]||e.zone}</td><td>${e.format}</td><td><input type="number" step="0.5" class="ex-poids-input" data-jour="${s.jour}" data-nom="${e.nom.replace(/"/g,'&quot;')}" value="${e.poidsUtilise || ""}" placeholder="ex : 20" style="width:64px;"> kg</td></tr>`).join("")}</tbody>
+          <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th colspan="3">Enregistrer ma séance</th></tr></thead>
+          <tbody>${s.exercices.map((e,i) => {
+            const dernier = dernierePerf(e.nom);
+            const nomAttr = e.nom.replace(/"/g,'&quot;');
+            return `<tr>
+              <td>${e.nom}${dernier ? `<div class="hint" style="margin-top:2px;">Dernière fois : ${dernier.poids}kg${dernier.repetitions ? ' × ' + dernier.repetitions : ''}</div>` : ""}</td>
+              <td>${ZONE_LABELS[e.zone]||e.zone}</td>
+              <td>${e.format}</td>
+              <td><input type="number" step="0.5" class="ex-poids-input" placeholder="kg" style="width:56px;"></td>
+              <td><input type="number" step="1" class="ex-reps-input" placeholder="reps" style="width:56px;"></td>
+              <td><button type="button" class="btn-ghost ex-log-btn" data-jour="${s.jour}" data-nom="${nomAttr}" data-zone="${e.zone}" style="width:auto; white-space:nowrap;">Enregistrer</button></td>
+            </tr>`;
+          }).join("")}</tbody>
         </table>
         ${s.etirements && s.etirements.length ? `
         <div style="margin-top:10px;">
@@ -88,6 +166,8 @@ function render(row){
         </div>` : ""}
       </div>
     `).join("")}
+
+    ${renderProgression()}
 
     ${planRepas ? `
     <h3 style="font-size:19px; margin:28px 0 12px;">Planning repas</h3>
@@ -122,14 +202,23 @@ function render(row){
     </div>` : ""}
   `;
 
-  app.querySelectorAll(".ex-poids-input").forEach(input => {
-    input.addEventListener("change", async () => {
-      const val = input.value.trim();
-      const poids = parseFloat(val.replace(",", "."));
-      if (isNaN(poids)) return;
-      await supabaseClient.rpc("set_poids_exercice", {
-        p_cliente_id: clienteId, p_jour: input.dataset.jour, p_nom_exercice: input.dataset.nom, p_poids: poids,
+  app.querySelectorAll(".ex-log-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const row2 = btn.closest("tr");
+      const poidsInput = row2.querySelector(".ex-poids-input");
+      const repsInput = row2.querySelector(".ex-reps-input");
+      const poids = poidsInput.value ? parseFloat(poidsInput.value.replace(",", ".")) : null;
+      const repetitions = repsInput.value ? parseInt(repsInput.value, 10) : null;
+      if (poids == null && repetitions == null){ return; }
+      btn.disabled = true; const texteOriginal = btn.textContent; btn.textContent = "…";
+      const { error } = await supabaseClient.from("performances").insert({
+        cliente_id: clienteId, jour: btn.dataset.jour, nom_exercice: btn.dataset.nom, zone: btn.dataset.zone,
+        poids, repetitions,
       });
+      btn.disabled = false; btn.textContent = texteOriginal;
+      if (error){ alert("Erreur d'enregistrement, réessaie."); return; }
+      poidsInput.value = ""; repsInput.value = "";
+      await rafraichirPerformances();
     });
   });
 }
