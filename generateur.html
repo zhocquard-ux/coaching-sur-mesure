@@ -806,10 +806,16 @@ function volumeZonesHtml(volumeParZone){
         </div>
       </div>`;
   }).join("");
+  const zonesVides = zones.filter(z => volumeParZone[z].prioritaire && volumeParZone[z].series === 0);
+  const alerteVide = zonesVides.length ? `
+    <div style="background:#fdf1ee; border:1px solid var(--terracotta-dark); border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; line-height:1.5;">
+      <strong>⚠ ${zonesVides.map(z => ZONE_LABELS[z] || z).join(", ")} à 0 série</strong> — aucun exercice de la bibliothèque pour cette zone ne passe le matériel et les contre-indications de la cliente : c'est un vrai trou de contenu, pas un souci d'affichage. Ajoute manuellement un exercice adapté sur les jours concernés (bouton « + Ajouter un exercice » ci-dessous) ou préviens-moi de la zone/du matériel concerné pour que j'enrichisse la bibliothèque.
+    </div>` : "";
   return `
     <div class="card" style="margin-bottom:24px;">
       <strong style="font-size:14px;">Volume hebdomadaire par zone</strong>
       <div class="hint" style="margin-bottom:12px;">Nombre de séries de renforcement sur la semaine complète — les zones prioritaires visent 12-20 séries/semaine (repères d'entraînement standards), les zones d'entretien 6-10, ajusté selon le niveau.</div>
+      ${alerteVide}
       ${lignes}
     </div>`;
 }

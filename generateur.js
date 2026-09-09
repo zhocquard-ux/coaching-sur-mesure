@@ -136,10 +136,31 @@ function pickExercicesJour(zones, pool, ratioCardio, dejaUtilises, nbExercices, 
     zi++;
   }
 
-  // Si les zones demandées (ex : zones prioritaires trop restreintes pour le
-  // matériel/niveau du client) n'ont pas suffi à remplir la séance, on
-  // complète avec le reste de la bibliothèque plutôt que de livrer une
-  // séance incomplète.
+  // Si les zones demandées ont un pool d'exercices UNIQUES trop restreint
+  // pour remplir la séance (ex : zone prioritaire avec peu d'options vu le
+  // matériel/les contre-indications du client), mieux vaut répéter un
+  // exercice déjà choisi DANS CES MÊMES ZONES (jusqu'à 2 fois) que d'aller
+  // chercher du remplissage sur une zone hors sujet : le volume reste sur
+  // la bonne zone plutôt que de gonfler artificiellement une zone d'entretien.
+  if (choisis.filter(e => e.type === "renfo").length < nbRenfo){
+    const renfoZones = pool.filter(e => e.type === "renfo" && zones.includes(e.zone));
+    if (renfoZones.length){
+      let tentativesRepetition = 0;
+      while (choisis.filter(e => e.type === "renfo").length < nbRenfo && tentativesRepetition < nbExercices * 20){
+        tentativesRepetition++;
+        const occurrences = id => choisis.filter(e => e.id === id).length;
+        const disponibles = renfoZones.filter(e => occurrences(e.id) < 2);
+        if (!disponibles.length) break;
+        const source = preferPolyarticulaire(disponibles);
+        choisis.push(source[Math.floor(Math.random()*source.length)]);
+      }
+    }
+  }
+
+  // Si même en répétant les exercices des zones demandées la séance reste
+  // incomplète (zone(s) avec un pool quasi vide compte tenu du matériel/des
+  // contre-indications), on complète avec le reste de la bibliothèque plutôt
+  // que de livrer une séance incomplète — dernier recours seulement.
   if (choisis.filter(e => e.type === "renfo").length < nbRenfo){
     const toutRenfo = pool.filter(e => e.type === "renfo" && !choisis.includes(e));
     let tentativesComplement = 0;
