@@ -96,6 +96,76 @@ function sparkline(points){
   `;
 }
 
+function parserSeries(format){
+  if (!format) return 0;
+  const m = String(format).match(/^(\d+)(?:-(\d+))?\s*x/i);
+  if (!m) return 0;
+  const lo = Number(m[1]);
+  const hi = m[2] ? Number(m[2]) : lo;
+  return (lo + hi) / 2;
+}
+
+function ciblesVolume(niveau){
+  const base = { debutant: [8, 14], intermediaire: [12, 18], avance: [14, 22] };
+  const prioritaire = base[niveau] || [10, 16];
+  const entretien = [Math.round(prioritaire[0] * 0.5), Math.round(prioritaire[1] * 0.55)];
+  return { prioritaire, entretien };
+}
+
+function calculerVolumeParZone(planSport, niveau, zonesPrioritaires){
+  const cibles = ciblesVolume(niveau);
+  const series = {};
+  (planSport.seances || []).forEach(s => {
+    (s.exercices || []).forEach(e => {
+      if (e.type !== "renfo") return;
+      series[e.zone] = (series[e.zone] || 0) + parserSeries(e.format);
+    });
+  });
+  const zones = new Set([...Object.keys(series), ...(zonesPrioritaires || [])]);
+  const resultat = {};
+  zones.forEach(zone => {
+    const prioritaire = (zonesPrioritaires || []).includes(zone);
+    resultat[zone] = {
+      series: Math.round((series[zone] || 0) * 10) / 10,
+      prioritaire,
+      cible: prioritaire ? cibles.prioritaire : cibles.entretien,
+    };
+  });
+  return resultat;
+}
+
+function volumeZonesHtml(volumeParZone){
+  const zones = Object.keys(volumeParZone);
+  if (!zones.length) return "";
+  zones.sort((a,b) => (volumeParZone[b].prioritaire - volumeParZone[a].prioritaire) || (ZONE_LABELS[a]||a).localeCompare(ZONE_LABELS[b]||b));
+  const lignes = zones.map(zone => {
+    const { series, prioritaire, cible } = volumeParZone[zone];
+    const scaleMax = Math.max(cible[1] * 1.2, series, 1);
+    const targetLeftPct = (cible[0] / scaleMax) * 100;
+    const targetWidthPct = ((cible[1] - cible[0]) / scaleMax) * 100;
+    const fillPct = Math.min(100, (series / scaleMax) * 100);
+    const dansLaCible = series >= cible[0];
+    const couleur = dansLaCible ? "#6F7F4A" : "#56633A";
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin-bottom:4px;">
+          <span><strong>${ZONE_LABELS[zone] || zone}</strong> <span style="font-size:10.5px; padding:1px 7px; border-radius:10px; border:1px solid var(--line); ${prioritaire ? "background:var(--sage-light); border-color:var(--sage);" : ""}">${prioritaire ? "Prioritaire" : "Entretien"}</span></span>
+          <span style="color:${dansLaCible ? "var(--ink-light)" : "var(--terracotta-dark)"};">${series} séries/sem ${dansLaCible ? "" : "⚠"} <span style="color:var(--ink-light);">(objectif ${cible[0]}-${cible[1]})</span></span>
+        </div>
+        <div style="position:relative; height:10px; background:var(--line); border-radius:5px; overflow:hidden;">
+          <div style="position:absolute; left:${targetLeftPct}%; width:${targetWidthPct}%; height:100%; background:var(--sage-light);"></div>
+          <div style="position:relative; width:${fillPct}%; height:100%; background:${couleur}; border-radius:5px;"></div>
+        </div>
+      </div>`;
+  }).join("");
+  return `
+    <div class="card" style="margin-bottom:24px;">
+      <strong style="font-size:14px;">Volume hebdomadaire par zone</strong>
+      <div class="hint" style="margin-bottom:12px;">Nombre de séries de renforcement sur la semaine — les zones prioritaires visent 12-20 séries/semaine, les zones d'entretien 6-10, ajusté selon ton niveau.</div>
+      ${lignes}
+    </div>`;
+}
+
 function renderProgression(){
   const parExercice = {};
   performances.forEach(p => {
@@ -134,6 +204,8 @@ function render(row){
       <h1 style="font-size:26px; margin-top:6px;">Le planning de ${row.prenom || "toi"}</h1>
       <p>Mis à jour le ${new Date(row.updated_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}. Enregistre le poids et les répétitions à chaque séance pour suivre ta progression au fil des semaines.</p>
     </div>
+
+    ${volumeZonesHtml(calculerVolumeParZone(planSport, row.niveau, row.zones_prioritaires))}
 
     <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
     ${joursAffiches.map(s => s.repos ? `

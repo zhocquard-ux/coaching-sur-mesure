@@ -782,6 +782,38 @@ function ajouterExercice(jour, exerciceId){
   rerenderResultats();
 }
 
+function volumeZonesHtml(volumeParZone){
+  const zones = Object.keys(volumeParZone);
+  if (!zones.length) return "";
+  zones.sort((a,b) => (volumeParZone[b].prioritaire - volumeParZone[a].prioritaire) || (ZONE_LABELS[a]||a).localeCompare(ZONE_LABELS[b]||b));
+  const lignes = zones.map(zone => {
+    const { series, prioritaire, cible } = volumeParZone[zone];
+    const scaleMax = Math.max(cible[1] * 1.2, series, 1);
+    const targetLeftPct = (cible[0] / scaleMax) * 100;
+    const targetWidthPct = ((cible[1] - cible[0]) / scaleMax) * 100;
+    const fillPct = Math.min(100, (series / scaleMax) * 100);
+    const dansLaCible = series >= cible[0];
+    const couleur = dansLaCible ? "var(--terracotta)" : "var(--terracotta-dark)";
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin-bottom:4px;">
+          <span><strong>${ZONE_LABELS[zone] || zone}</strong> <span style="font-size:10.5px; padding:1px 7px; border-radius:10px; border:1px solid var(--line); ${prioritaire ? "background:var(--sage-light); border-color:var(--sage);" : ""}">${prioritaire ? "Prioritaire" : "Entretien"}</span></span>
+          <span style="color:${dansLaCible ? "var(--ink-light)" : "var(--terracotta-dark)"};">${series} séries/sem ${dansLaCible ? "" : "⚠"} <span style="color:var(--ink-light);">(objectif ${cible[0]}-${cible[1]})</span></span>
+        </div>
+        <div style="position:relative; height:10px; background:var(--line); border-radius:5px; overflow:hidden;">
+          <div style="position:absolute; left:${targetLeftPct}%; width:${targetWidthPct}%; height:100%; background:var(--sage-light);"></div>
+          <div style="position:relative; width:${fillPct}%; height:100%; background:${couleur}; border-radius:5px;"></div>
+        </div>
+      </div>`;
+  }).join("");
+  return `
+    <div class="card" style="margin-bottom:24px;">
+      <strong style="font-size:14px;">Volume hebdomadaire par zone</strong>
+      <div class="hint" style="margin-bottom:12px;">Nombre de séries de renforcement sur la semaine complète — les zones prioritaires visent 12-20 séries/semaine (repères d'entraînement standards), les zones d'entretien 6-10, ajusté selon le niveau.</div>
+      ${lignes}
+    </div>`;
+}
+
 function afficherResultats(client, planSport, planRepas, liste, horaire, skipScroll){
   const resultats = document.getElementById("resultats");
   const coutEstime = estimerCoutListe(liste, client.supermarche);
@@ -811,6 +843,8 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
     ${surBudget ? `<div class="card" style="margin-bottom:24px; border-color:var(--terracotta-dark);"><strong style="color:var(--terracotta-dark);">⚠ Le coût estimé dépasse le budget fixé.</strong> Réduis les portions, clique "Régénérer" (les recettes économiques sont déjà privilégiées), ou augmente le budget.</div>` : ""}
 
     ${horaire ? `<div class="card" style="margin-bottom:24px;">${horaire.possible ? `<strong>Créneau type :</strong> ${horaire.resume}` : `<strong style="color:var(--terracotta-dark);">⚠ ${horaire.message}</strong>`}</div>` : ""}
+
+    ${volumeZonesHtml(calculerVolumeParZone(planSport, client.niveau, client.zonesPrioritaires))}
 
     <h3 style="font-size:19px; margin-bottom:12px;">Planning sport</h3>
     ${[...planSport.seances.map(s => ({ ...s, repos:false })), ...planSport.reposJours].sort((a,b) => JOURS.indexOf(a.jour) - JOURS.indexOf(b.jour)).map(s => s.repos ? `

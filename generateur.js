@@ -236,6 +236,55 @@ function genererPlanningSport(client){
   return { nbSeances: n, seances, reposJours };
 }
 
+// Extrait un nombre de séries approximatif d'un format ("3x12" -> 3,
+// "3-4x10" -> 3.5). Les formats sans "NxM" (cardio en minutes, tenues
+// isométriques d'étirement) ne comptent pas dans le volume de renforcement.
+function parserSeries(format){
+  if (!format) return 0;
+  const m = String(format).match(/^(\d+)(?:-(\d+))?\s*x/i);
+  if (!m) return 0;
+  const lo = Number(m[1]);
+  const hi = m[2] ? Number(m[2]) : lo;
+  return (lo + hi) / 2;
+}
+
+// Fourchettes de séries/semaine par zone, inspirées des repères de volume
+// d'entraînement (MEV/MAV) utilisés en préparation physique — plus élevées
+// pour une zone prioritaire, plus basses en entretien, et qui montent avec
+// le niveau (plus d'expérience = capacité à encaisser plus de volume).
+function ciblesVolume(niveau){
+  const base = { debutant: [8, 14], intermediaire: [12, 18], avance: [14, 22] };
+  const prioritaire = base[niveau] || [10, 16];
+  const entretien = [Math.round(prioritaire[0] * 0.5), Math.round(prioritaire[1] * 0.55)];
+  return { prioritaire, entretien };
+}
+
+// Volume hebdomadaire de renforcement par zone, sur l'ensemble des séances
+// de la semaine — la mesure la plus fiable utilisée par les coachs pour
+// vérifier qu'une zone prioritaire reçoit vraiment plus de travail qu'une
+// zone d'entretien, plutôt que de se fier au seul nombre de jours dédiés.
+function calculerVolumeParZone(planSport, niveau, zonesPrioritaires){
+  const cibles = ciblesVolume(niveau);
+  const series = {};
+  (planSport.seances || []).forEach(s => {
+    (s.exercices || []).forEach(e => {
+      if (e.type !== "renfo") return;
+      series[e.zone] = (series[e.zone] || 0) + parserSeries(e.format);
+    });
+  });
+  const zones = new Set([...Object.keys(series), ...(zonesPrioritaires || [])]);
+  const resultat = {};
+  zones.forEach(zone => {
+    const prioritaire = (zonesPrioritaires || []).includes(zone);
+    resultat[zone] = {
+      series: Math.round((series[zone] || 0) * 10) / 10,
+      prioritaire,
+      cible: prioritaire ? cibles.prioritaire : cibles.entretien,
+    };
+  });
+  return resultat;
+}
+
 function placementHoraire(client){
   if (client.momentPrefere !== "matin" || !client.heureReveil || !client.heureDebutTravail){
     return null;
