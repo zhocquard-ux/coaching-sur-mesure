@@ -68,19 +68,36 @@ function getSplit(n, zonesPrioritaires){
   return result;
 }
 
-function zonesPourJour(typeJour, zonesPrioritaires, indexFullBody){
+// Fait tourner la liste de zones selon un décalage cumulé, pour que ce ne
+// soit pas toujours la même zone en tête. Sans ça, quand une séance a peu de
+// créneaux de renforcement (objectif cardio-dominant, douleur du jour...),
+// pickExercicesJour remplit son quota avec les toutes premières zones de la
+// liste et n'atteint jamais les suivantes — la dernière zone prioritaire
+// cochée par la coach pouvait ainsi rester à 0 série toute la semaine, jour
+// après jour, alors que des exercices existaient bien pour elle. Le décalage
+// avance du nombre d'exercices de renfo posés la fois précédente (et pas
+// juste de 1 en 1) pour garantir qu'après quelques occurrences du même type
+// de séance, chaque zone soit passée par la case "en tête de liste".
+function rotationJour(zones, decalage){
+  if (zones.length < 2) return zones;
+  const d = decalage % zones.length;
+  return zones.slice(d).concat(zones.slice(0, d));
+}
+
+function zonesPourJour(typeJour, zonesPrioritaires, indexFullBody, decalageZone){
+  decalageZone = decalageZone || 0;
   const rotationFullBody = [
     ["pectoraux","dos","quadriceps","abdominaux"],
     ["epaules","biceps","triceps","fessiers","ischio_jambiers"],
     ["dos","pectoraux","fessiers","obliques","mollets"],
   ];
   switch(typeJour){
-    case "Haut du corps": return ["pectoraux","dos","epaules","biceps","triceps","trapezes","avant_bras"];
-    case "Bas du corps": return ["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs","abdominaux"];
-    case "Push": return ["pectoraux","epaules","triceps"];
-    case "Pull": return ["dos","trapezes","biceps"];
-    case "Jambes": return ["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs"];
-    case "Zone prioritaire": return zonesPrioritaires.length ? zonesPrioritaires : ["abdominaux"];
+    case "Haut du corps": return rotationJour(["pectoraux","dos","epaules","biceps","triceps","trapezes","avant_bras"], decalageZone);
+    case "Bas du corps": return rotationJour(["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs","abdominaux"], decalageZone);
+    case "Push": return rotationJour(["pectoraux","epaules","triceps"], decalageZone);
+    case "Pull": return rotationJour(["dos","trapezes","biceps"], decalageZone);
+    case "Jambes": return rotationJour(["quadriceps","ischio_jambiers","fessiers","mollets","adducteurs"], decalageZone);
+    case "Zone prioritaire": return rotationJour(zonesPrioritaires.length ? zonesPrioritaires : ["abdominaux"], decalageZone);
     default: return rotationFullBody[indexFullBody % rotationFullBody.length];
   }
 }
@@ -235,13 +252,23 @@ function genererPlanningSport(client){
   // Douleurs signalées pour la séance du jour : on allège plutôt que d'annuler.
   const nbExBase = client.niveau === "avance" ? 7 : client.niveau === "intermediaire" ? 6 : 5;
   const nbEx = client.douleurActuelle ? Math.max(3, nbExBase - 2) : nbExBase;
+  // Nombre de créneaux de renforcement par séance — sert aussi à faire
+  // avancer la rotation des zones (voir zonesPourJour/rotationJour) : quand
+  // un même type de séance revient plusieurs fois dans la semaine (ex :
+  // "Zone prioritaire" avec 4 zones mais seulement 2 créneaux de renfo par
+  // jour), le décalage doit progresser d'exactement ce nombre pour garantir
+  // que toutes les zones passent en tête au fil des occurrences.
+  const nbRenfoParJour = Math.max(1, nbEx - Math.max(0, Math.round(nbEx * ratio)));
+  const decalageParType = {};
 
   const seances = joursChoisis.map((jour, idx) => {
     let typeJour = split[idx % split.length];
     if (typeJour === "Zone prioritaire" && dernierType && zonesPourJour(typeJour, client.zonesPrioritaires, idx).some(z => zonesPourJour(dernierType, client.zonesPrioritaires, idx-1).includes(z))){
       typeJour = "Zone prioritaire";
     }
-    const zones = zonesPourJour(typeJour, client.zonesPrioritaires, idx);
+    const decalageZone = decalageParType[typeJour] || 0;
+    const zones = zonesPourJour(typeJour, client.zonesPrioritaires, idx, decalageZone);
+    decalageParType[typeJour] = decalageZone + nbRenfoParJour;
     dernierType = typeJour;
     const exercices = pickExercicesJour(zones, pool, ratio, dejaUtilises, nbEx, client.preferIds)
       .sort((a, b) => (b.polyarticulaire ? 1 : 0) - (a.polyarticulaire ? 1 : 0));
