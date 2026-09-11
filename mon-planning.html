@@ -32,6 +32,13 @@ const ZONE_LABELS = {
   mollets:"Mollets", full_body:"Full body / Cardio",
 };
 const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (matin)", dejeuner:"Déjeuner", gouter:"Goûter / collation (après-midi)", diner:"Dîner" };
+// Ordre chronologique fixe d'affichage des repas. Le planning est stocké en
+// jsonb côté Supabase, qui ne conserve PAS l'ordre d'insertion des clés d'un
+// objet (il les réordonne en interne par longueur puis alphabétiquement) —
+// itérer sur Object.keys(j.repas) affichait donc les repas dans le désordre
+// (dîner avant petit-déjeuner...). On force l'ordre via cette liste plutôt
+// que de se fier aux clés telles que renvoyées par la base.
+const REPAS_ORDER = ["petit_dej", "collation_matin", "dejeuner", "gouter", "diner"];
 const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 
 const params = new URLSearchParams(window.location.search);
@@ -246,7 +253,7 @@ function render(row){
     ${planRepas.jours.map(j => `
       <div class="plan-day">
         <h3>${j.jour}</h3>
-        ${Object.keys(j.repas).map(slot => {
+        ${REPAS_ORDER.filter(slot => slot in j.repas).map(slot => {
           const r = j.repas[slot];
           if (!r) return "";
           return `

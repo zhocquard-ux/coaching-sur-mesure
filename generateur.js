@@ -445,19 +445,32 @@ function choisirRecette(repasType, client, utiliseesSemaine){
     utiliseesSemaine.add(choix.id);
     return choix;
   }
-  let candidats = valides;
+  if (!valides.length) return null;
+
+  // La fraîcheur (ne pas resservir un plat déjà prévu cette semaine) passe
+  // AVANT la correspondance à l'objectif ou le profil anti-inflammatoire :
+  // ce ne sont que des préférences de tri, pas des contraintes dures (les
+  // restrictions alimentaires réelles — allergies, végé/vegan, sans
+  // gluten/lactose — sont déjà appliquées dans recettesValides). Avant ce
+  // correctif, l'objectif écrasait la liste dès qu'il matchait ne serait-ce
+  // qu'une ou deux recettes, forçant les mêmes plats en boucle toute la
+  // semaine même quand d'autres recettes compatibles restaient disponibles.
+  const fraichesGlobal = valides.filter(r => !utiliseesSemaine.has(r.id));
+  const pool = fraichesGlobal.length ? fraichesGlobal : valides;
+
+  let candidats = pool;
   // Règles douloureuses / endométriose / SOPK / douleurs du jour : recettes
   // plus riches en oméga-3, fer, magnésium proposées en priorité (adaptation
   // nutritionnelle courante, ne remplace pas un avis médical).
   if ((client.santeHormonale && client.santeHormonale.length) || client.douleurActuelle){
-    const antiInflammatoire = candidats.filter(r => (r.profils || []).includes("anti_inflammatoire"));
+    const antiInflammatoire = pool.filter(r => (r.profils || []).includes("anti_inflammatoire"));
     if (antiInflammatoire.length) candidats = antiInflammatoire;
   }
   const parObjectif = candidats.filter(r => r.profils.includes(client.objectif) || (client.objectifSecondaire && r.profils.includes(client.objectifSecondaire)));
-  if (parObjectif.length) candidats = parObjectif;
-  if (!candidats.length) return null;
-  const fraiches = candidats.filter(r => !utiliseesSemaine.has(r.id));
-  let source = fraiches.length ? fraiches : candidats;
+  // On ne garde le tri par objectif que s'il laisse une vraie variété de
+  // choix frais — sinon 2-3 recettes reviendraient en boucle toute la
+  // semaine alors que d'autres recettes compatibles avec le régime existent.
+  let source = parObjectif.length >= 3 ? parObjectif : candidats;
   if (client.budgetSemaine && client.budgetSemaine > 0){
     const triees = source.slice().sort((a,b) => estimerCoutRecette(a) - estimerCoutRecette(b));
     source = triees.slice(0, Math.max(1, Math.ceil(triees.length * 0.6)));
