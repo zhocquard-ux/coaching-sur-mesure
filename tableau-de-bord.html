@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tableau de bord — Coaching Sur-Mesure</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .dash-card{ background:var(--cream-light); border:1px solid var(--line); border-radius:4px; padding:20px 22px; margin-bottom:14px; }
+  .dash-card.alerte{ border-color:var(--terracotta-dark); }
+  .dash-top{ display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+  .dash-name{ font-size:18px; font-weight:600; }
+  .dash-tag{ font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-light); border:1px solid var(--line); border-radius:10px; padding:2px 8px; margin-left:8px; }
+  .dash-alert{ display:inline-block; font-size:12px; background:#fdf1ee; border:1px solid var(--terracotta-dark); color:var(--terracotta-dark); border-radius:10px; padding:2px 9px; margin:2px 6px 2px 0; }
+  .dash-line{ font-size:13.5px; color:var(--ink-light); margin-top:6px; }
+  .dash-actions{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .dash-actions a, .dash-actions button{ width:auto; font-size:12.5px; padding:7px 14px; }
+  .dash-filters{ display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+  .dash-filters button{ width:auto; font-size:12.5px; padding:6px 14px; }
+  .dash-filters button.active{ background:var(--terracotta); color:#fff; border-color:var(--terracotta); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
+    <div style="display:flex; gap:10px;">
+      <a href="generateur.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">Générateur</a>
+      <button id="logout-btn" class="header-cta" style="width:auto;">Se déconnecter</button>
+    </div>
+  </div>
+</header>
+
+<div id="app" class="gen-wrap" style="display:none;"></div>
+
+<footer class="site-footer">
+  <div class="footer-inner"><a href="generateur.html" class="footer-back">← Retour au générateur</a></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script src="generateur.js"></script>
+<script>
+let EXERCICES = [];
+let RECETTES = [];
+
+const OBJECTIF_LABELS = { perte_poids:"Perte de poids / sèche", prise_masse:"Prise de masse", tonus:"Tonification", energie:"Énergie au quotidien", reprise:"Reprise de routine", endurance:"Endurance" };
+const NIVEAU_LABELS = { debutant:"Débutant(e)", intermediaire:"Intermédiaire", avance:"Avancé(e)" };
+
+let filtreActif = "alertes";
+let clientesAvecStatut = [];
+
+async function verifierSession(){
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session){ window.location.href = "login.html"; return; }
+  document.getElementById("app").innerHTML = `<p style="text-align:center; color:var(--ink-light); padding:60px 0;">Chargement…</p>`;
+  document.getElementById("app").style.display = "block";
+  await charger();
+}
+verifierSession();
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  window.location.href = "login.html";
+});
+
+function timeToMinutes(hhmm){
+  if (!hhmm) return null;
+  const [h,m] = hhmm.split(":").map(Number);
+  return h*60+m;
+}
+
+// Reconstruit l'objet "client" attendu par le générateur (generateur.js)
+// directement depuis la ligne stockée en base, sans repasser par le
+// formulaire — c'est ce qui permet de régénérer la semaine en un clic
+// depuis le tableau de bord plutôt que de rouvrir toute la fiche.
+function mapRowToClient(row){
+  return {
+    prenom: row.prenom || "Cliente", email: row.email || "", telephone: row.telephone || "",
+    age: row.age || 30, sexe: row.sexe, objectif: row.objectif, objectifSecondaire: row.objectif_secondaire || null,
+    delaiMois: row.delai_mois, poidsActuel: row.poids_actuel || 60, poidsSouhaite: row.poids_souhaite || null,
+    niveau: row.niveau, niveauTier: NIVEAU_TIER[row.niveau], typeEffort: row.type_effort,
+    zonesPrioritaires: row.zones_prioritaires || [], problemesSante: row.problemes_sante || [],
+    santeHormonale: row.sante_hormonale || [], maladieChronique: row.maladie_chronique || "",
+    douleurActuelle: !!row.douleur_actuelle, excludeIds: row.exclude_exercices || [], preferIds: row.exercices_preferes || [],
+    joursDispo: row.jours_dispo || [], joursRepos: row.jours_repos || [],
+    dureeSeance: row.duree_seance || 45, lieu: row.lieu, materiel: row.materiel, materielTier: MATERIEL_TIER[row.materiel],
+    momentPrefere: row.moment_prefere, heureReveilRaw: row.heure_reveil, heureDebutTravailRaw: row.heure_debut_travail,
+    heureReveil: timeToMinutes(row.heure_reveil), heureDebutTravail: timeToMinutes(row.heure_debut_travail),
+    trajetDomicileSalle: row.trajet_domicile_salle || 0, trajetSalleTravail: row.trajet_salle_travail || 0,
+    tamponRepas: row.tampon_repas || 0,
+    vegetarien: !!row.vegetarien, vegan: !!row.vegan, sansGluten: !!row.sans_gluten, sansLactose: !!row.sans_lactose,
+    alimentsEvites: row.aliments_evites || [], alimentsEvitesLibre: row.aliments_evites_libre || [],
+    repasInclus: row.repas_inclus || [], recettesPreferees: row.recettes_preferees || [],
+    supermarche: row.supermarche, budgetSemaine: row.budget_semaine,
+  };
+}
+
+function joursDepuis(dateStr){
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
+
+// Calcule le statut d'une cliente à partir de ses check-ins hebdomadaires :
+// dernières nouvelles, tendance de poids vs objectif, adhérence sport/nutrition.
+// C'est ce qui permet de repérer d'un coup d'œil qui a besoin qu'on ajuste
+// son planning, plutôt que d'ouvrir chaque fiche une par une.
+function calculerStatut(row, checkins){
+  const alertes = [];
+  const tries = checkins.slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const dernier = tries[0] || null;
+  const precedent = tries[1] || null;
+
+  if (!row.dernier_planning_sport){
+    alertes.push({ label:"Aucun planning généré", grave:false });
+  } else if (!dernier){
+    alertes.push({ label:"Aucun suivi reçu pour l'instant", grave: joursDepuis(row.updated_at) > 10 });
+  } else {
+    const jours = joursDepuis(dernier.created_at);
+    if (jours > 10) alertes.push({ label:`Pas de nouvelles depuis ${jours} jours`, grave:true });
+    if (dernier.sport_suivi != null && dernier.sport_suivi < 50) alertes.push({ label:"Sport peu suivi", grave:true });
+    if (dernier.nutrition_suivi != null && dernier.nutrition_suivi < 50) alertes.push({ label:"Nutrition peu suivie", grave:true });
+    if (dernier.satisfaction != null && dernier.satisfaction <= 2) alertes.push({ label:"Satisfaction basse", grave:true });
+    if (dernier.poids != null && precedent && precedent.poids != null){
+      const delta = dernier.poids - precedent.poids;
+      const veutBaisse = row.objectif === "perte_poids";
+      const veutHausse = row.objectif === "prise_masse";
+      if ((veutBaisse || veutHausse) && Math.abs(delta) >= 0.1){
+        const conforme = veutBaisse ? delta < 0 : delta > 0;
+        if (!conforme) alertes.push({ label:"Poids à l'inverse de l'objectif", grave:true });
+      }
+    }
+  }
+  return { dernier, precedent, alertes, graves: alertes.filter(a => a.grave).length };
+}
+
+async function charger(){
+  const [clientesRes, checkinsRes, ex, re] = await Promise.all([
+    supabaseClient.from("clientes").select("*").order("prenom"),
+    supabaseClient.from("checkins").select("*").order("created_at", { ascending:false }),
+    supabaseClient.from("exercices").select("*"),
+    supabaseClient.from("recettes").select("*"),
+  ]);
+  EXERCICES = ex.data || [];
+  RECETTES = re.data || [];
+  const checkinsParCliente = {};
+  (checkinsRes.data || []).forEach(c => { (checkinsParCliente[c.cliente_id] = checkinsParCliente[c.cliente_id] || []).push(c); });
+
+  clientesAvecStatut = (clientesRes.data || []).map(row => ({ row, statut: calculerStatut(row, checkinsParCliente[row.id] || []) }));
+  clientesAvecStatut.sort((a,b) => b.statut.graves - a.statut.graves);
+  render();
+}
+
+function render(){
+  const app = document.getElementById("app");
+  const total = clientesAvecStatut.length;
+  const nbAlertes = clientesAvecStatut.filter(c => c.statut.graves > 0).length;
+  const visibles = filtreActif === "alertes" ? clientesAvecStatut.filter(c => c.statut.graves > 0) : clientesAvecStatut;
+
+  app.innerHTML = `
+    <div class="form-intro">
+      <div class="eyebrow">Coaching sport & nutrition</div>
+      <h1 style="font-size:26px; margin-top:6px;">Tableau de bord</h1>
+      <p>Vue d'ensemble de tes clientes — qui a besoin d'un ajustement, sans ouvrir chaque fiche.</p>
+    </div>
+    <div class="summary-stats">
+      <div class="stat-block"><div class="n">${total}</div><div class="l">Clientes</div></div>
+      <div class="stat-block"><div class="n" style="${nbAlertes ? "color:var(--terracotta-dark);" : ""}">${nbAlertes}</div><div class="l">À regarder</div></div>
+    </div>
+    <div class="dash-filters">
+      <button type="button" data-filtre="alertes" class="${filtreActif==="alertes"?"active":""}">⚠ À regarder (${nbAlertes})</button>
+      <button type="button" data-filtre="toutes" class="${filtreActif==="toutes"?"active":""}">Toutes (${total})</button>
+    </div>
+    ${!visibles.length ? `<p style="color:var(--ink-light); font-style:italic;">${filtreActif==="alertes" ? "Rien à signaler — toutes les clientes suivies sont dans les clous." : "Aucune cliente enregistrée pour l'instant."}</p>` : ""}
+    ${visibles.map(({row, statut}) => `
+      <div class="dash-card ${statut.graves ? "alerte" : ""}">
+        <div class="dash-top">
+          <div><span class="dash-name">${row.prenom}</span><span class="dash-tag">${OBJECTIF_LABELS[row.objectif] || row.objectif || "—"}</span><span class="dash-tag">${NIVEAU_LABELS[row.niveau] || row.niveau || "—"}</span></div>
+        </div>
+        ${statut.alertes.length ? `<div>${statut.alertes.map(a => `<span class="dash-alert">${a.grave ? "⚠" : "ℹ"} ${a.label}</span>`).join("")}</div>` : `<div class="dash-alert" style="background:var(--sage-light); border-color:var(--sage); color:var(--terracotta-dark);">✓ Rien à signaler</div>`}
+        ${statut.dernier ? `<div class="dash-line">Dernier suivi le ${new Date(statut.dernier.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })} — Énergie ${statut.dernier.energie ?? "?"}/10, sport suivi ${statut.dernier.sport_suivi ?? "?"}%, nutrition suivie ${statut.dernier.nutrition_suivi ?? "?"}%${statut.dernier.poids ? `, poids ${statut.dernier.poids}kg` : ""}</div>` : ""}
+        <div class="dash-actions">
+          <a href="generateur.html?cliente=${row.id}" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line); text-decoration:none; display:inline-flex; align-items:center;">Ouvrir la fiche</a>
+          <button type="button" class="btn-ghost regen-btn" data-id="${row.id}">↻ Régénérer la semaine</button>
+        </div>
+      </div>
+    `).join("")}
+  `;
+
+  app.querySelectorAll("[data-filtre]").forEach(btn => {
+    btn.addEventListener("click", () => { filtreActif = btn.dataset.filtre; render(); });
+  });
+  app.querySelectorAll(".regen-btn").forEach(btn => {
+    btn.addEventListener("click", () => regenererPourClient(btn.dataset.id, btn));
+  });
+}
+
+async function regenererPourClient(id, btn){
+  const entry = clientesAvecStatut.find(c => c.row.id === id);
+  if (!entry) return;
+  btn.disabled = true; btn.textContent = "Génération…";
+  const client = mapRowToClient(entry.row);
+  const planSport = genererPlanningSport(client);
+  const planRepas = genererPlanningRepas(client);
+  const liste = genererListeCourses(planRepas);
+  const { error } = await supabaseClient.from("clientes").update({
+    dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
+  }).eq("id", id);
+  btn.disabled = false;
+  if (error){ btn.textContent = "Erreur, réessaie"; return; }
+  entry.row.dernier_planning_sport = planSport;
+  entry.row.dernier_planning_repas = planRepas;
+  entry.row.derniere_liste_courses = liste;
+  btn.textContent = "✓ Régénéré";
+  setTimeout(() => { btn.textContent = "↻ Régénérer la semaine"; }, 2000);
+}
+</script>
+</body>
+</html>

@@ -12,6 +12,7 @@
   <div class="header-inner">
     <a href="index.html" class="brand-mark">Coaching <em>Sur-Mesure</em></a>
     <div style="display:flex; gap:10px;">
+      <a href="tableau-de-bord.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">Tableau de bord</a>
       <a href="admin.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">Gérer la base</a>
       <a href="index.html" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line);">← Site</a>
       <button id="logout-btn" class="header-cta" style="width:auto;">Se déconnecter</button>
@@ -95,6 +96,8 @@ async function verifierSession(){
   renderForm();
   chargerListeClientes();
   chargerProspects();
+  const idDepuisLien = new URLSearchParams(window.location.search).get("cliente");
+  if (idDepuisLien) chargerCliente(idDepuisLien);
 }
 verifierSession();
 
