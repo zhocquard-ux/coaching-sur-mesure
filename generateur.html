@@ -59,6 +59,28 @@ const REPAS_DEFAUT = {
 let clienteActuelleId = null;
 let prospectActuelId = null;
 let dernierResultat = null; // { client, planSport, planRepas, liste, horaire }
+let activitesLibres = []; // activités que la cliente a faites de son côté, ajoutées par la coach
+
+async function chargerActivitesLibres(id){
+  if (!id){ activitesLibres = []; return; }
+  const { data, error } = await supabaseClient.from("activites_libres").select("*").eq("cliente_id", id).order("created_at");
+  activitesLibres = error ? [] : data;
+}
+
+async function ajouterActiviteLibre(jour, description){
+  if (!clienteActuelleId || !description.trim()) return;
+  const { data, error } = await supabaseClient.from("activites_libres")
+    .insert({ cliente_id: clienteActuelleId, jour, description: description.trim() }).select().single();
+  if (error){ alert("Erreur : " + error.message); return; }
+  activitesLibres.push(data);
+  rerenderResultats();
+}
+
+async function retirerActiviteLibre(id){
+  await supabaseClient.from("activites_libres").delete().eq("id", id);
+  activitesLibres = activitesLibres.filter(a => a.id !== id);
+  rerenderResultats();
+}
 
 // ---- Authentification ----
 async function verifierSession(){
@@ -446,6 +468,7 @@ function nouvelleFiche(){
   clienteActuelleId = null;
   prospectActuelId = null;
   dernierResultat = null;
+  activitesLibres = [];
   document.getElementById("gen-form").reset();
   cocherValeurs("repas", ["petit_dej","dejeuner","diner"]);
   document.getElementById("f-tampon-repas").value = 60;
@@ -568,6 +591,7 @@ async function chargerCliente(id){
   remplirFormulaire(data);
   document.getElementById("resultats").innerHTML = "";
   dernierResultat = null;
+  await chargerActivitesLibres(data.id);
   if (data.dernier_planning_sport && data.dernier_planning_repas){
     const client = collecterClient();
     const horaire = placementHoraire(client);
@@ -744,6 +768,7 @@ async function enregistrerFiche(){
   chargerListeClientes();
   renderSuivi(clienteActuelleId, result.data.prenom, result.data.objectif);
   renderProgression(clienteActuelleId);
+  await chargerActivitesLibres(clienteActuelleId);
   rerenderResultats();
 }
 
@@ -820,6 +845,24 @@ function volumeZonesHtml(volumeParZone){
     </div>`;
 }
 
+// Ce que la cliente a fait de son côté (course, vélo, marche...) en dehors
+// du planning prévu, ajouté par la coach pour que le suivi reflète la
+// réalité — visible ici et sur le lien envoyé à la cliente.
+function activitesLibresHtml(jour){
+  const activites = activitesLibres.filter(a => a.jour === jour);
+  const liste = activites.length ? `
+    <ul style="margin:8px 0 0; padding-left:0; list-style:none; font-size:13.5px;">
+      ${activites.map(a => `<li style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 0;"><span>🏃 ${a.description}</span>${clienteActuelleId ? `<button type="button" class="activite-remove-btn" data-id="${a.id}" title="Retirer" style="border:none; background:none; cursor:pointer; color:var(--ink-light);">✕</button>` : ""}</li>`).join("")}
+    </ul>` : "";
+  const ajout = clienteActuelleId ? `
+    <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+      <input type="text" class="activite-add-input" data-jour="${jour}" placeholder="Ex : course à pied 30 min" style="flex:1; font-size:13px;">
+      <button type="button" class="btn-ghost activite-add-btn" data-jour="${jour}" style="width:auto;">+ Activité perso</button>
+    </div>` : "";
+  if (!liste && !ajout) return "";
+  return `<div style="margin-top:10px;">${liste}${ajout}</div>`;
+}
+
 function afficherResultats(client, planSport, planRepas, liste, horaire, skipScroll){
   const resultats = document.getElementById("resultats");
   const coutEstime = estimerCoutListe(liste, client.supermarche);
@@ -857,6 +900,7 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
       <div class="plan-day">
         <h3>${s.jour} — Repos</h3>
         <div class="day-meta" style="color:var(--ink-light);">${s.suggestion}</div>
+        ${activitesLibresHtml(s.jour)}
       </div>
     ` : `
       <div class="plan-day" data-jour="${s.jour}">
@@ -879,6 +923,7 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
           <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
           <ul style="margin:6px 0 0; padding-left:18px; font-size:13.5px;">${s.etirements.map(e => `<li>${e.nom} — ${e.format}</li>`).join("")}</ul>
         </div>` : ""}
+        ${activitesLibresHtml(s.jour)}
       </div>
     `).join("")}
 
@@ -940,6 +985,20 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
     btn.addEventListener("click", () => {
       const select = resultats.querySelector(`.ex-add-select[data-jour="${btn.dataset.jour}"]`);
       ajouterExercice(btn.dataset.jour, select.value);
+    });
+  });
+  resultats.querySelectorAll(".activite-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => retirerActiviteLibre(btn.dataset.id));
+  });
+  resultats.querySelectorAll(".activite-add-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const input = resultats.querySelector(`.activite-add-input[data-jour="${btn.dataset.jour}"]`);
+      ajouterActiviteLibre(btn.dataset.jour, input.value);
+    });
+  });
+  resultats.querySelectorAll(".activite-add-input").forEach(input => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter"){ e.preventDefault(); ajouterActiviteLibre(input.dataset.jour, input.value); }
     });
   });
   if (!skipScroll) resultats.scrollIntoView({ behavior:"smooth" });

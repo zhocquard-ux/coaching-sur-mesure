@@ -44,6 +44,7 @@ const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"
 const params = new URLSearchParams(window.location.search);
 const clienteId = params.get("id");
 let performances = [];
+let activitesLibres = [];
 let dernierePlanning = null;
 
 async function charger(){
@@ -52,9 +53,10 @@ async function charger(){
     app.innerHTML = `<div class="card"><p>Lien invalide — demande à ton coach de te renvoyer ton lien personnel.</p></div>`;
     return;
   }
-  const [{ data, error }, perfRes] = await Promise.all([
+  const [{ data, error }, perfRes, activitesRes] = await Promise.all([
     supabaseClient.rpc("get_planning_partage", { p_cliente_id: clienteId }),
     supabaseClient.rpc("get_performances", { p_cliente_id: clienteId }),
+    supabaseClient.rpc("get_activites_libres", { p_cliente_id: clienteId }),
   ]);
   const row = data && data[0];
   if (error || !row || !row.dernier_planning_sport){
@@ -62,8 +64,18 @@ async function charger(){
     return;
   }
   performances = perfRes.data || [];
+  activitesLibres = activitesRes.data || [];
   dernierePlanning = row;
   render(row);
+}
+
+function activitesLibresHtml(jour){
+  const activites = activitesLibres.filter(a => a.jour === jour);
+  if (!activites.length) return "";
+  return `
+    <ul style="margin:8px 0 0; padding-left:0; list-style:none; font-size:13.5px;">
+      ${activites.map(a => `<li style="padding:4px 0;">🏃 ${a.description}</li>`).join("")}
+    </ul>`;
 }
 
 async function rafraichirPerformances(){
@@ -219,6 +231,7 @@ function render(row){
       <div class="plan-day">
         <h3>${s.jour} — Repos</h3>
         <div class="day-meta" style="color:var(--ink-light);">${s.suggestion}</div>
+        ${activitesLibresHtml(s.jour)}
       </div>
     ` : `
       <div class="plan-day" data-jour="${s.jour}">
@@ -243,6 +256,7 @@ function render(row){
           <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
           <ul style="margin:6px 0 0; padding-left:18px; font-size:13.5px;">${s.etirements.map(e => `<li>${e.nom} — ${e.format}</li>`).join("")}</ul>
         </div>` : ""}
+        ${activitesLibresHtml(s.jour)}
       </div>
     `).join("")}
 
