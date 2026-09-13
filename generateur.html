@@ -939,10 +939,12 @@ function afficherResultats(client, planSport, planRepas, liste, horaire, skipScr
         <h3>${s.jour} — ${s.typeJour}</h3>
         <div class="day-meta">${client.lieu === "salle" ? "Salle de sport" : client.lieu === "maison" ? "À la maison" : client.lieu === "exterieur" ? "Extérieur" : "Selon disponibilité"} · ${client.dureeSeance} min</div>
         ${s.adaptee ? `<div class="day-meta" style="color:var(--terracotta-dark);">⚠ Séance adaptée — douleurs signalées, charge allégée et abdos à faible pression.</div>` : ""}
+        <div class="plan-table-wrap">
         <table class="plan-table">
           <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th>Poids utilisé</th><th></th></tr></thead>
           <tbody>${s.exercices.map((e,i) => `<tr><td>${e.nom}</td><td>${ZONE_LABELS[e.zone]}</td><td>${e.format}</td><td><input type="number" step="0.5" class="ex-poids-input" data-jour="${s.jour}" data-idx="${i}" value="${e.poidsUtilise || ""}" placeholder="ex : 20" style="width:64px;"> kg</td><td><button type="button" class="ex-remove-btn" data-jour="${s.jour}" data-idx="${i}" title="Retirer cet exercice">✕</button></td></tr>`).join("") || `<tr><td colspan="5">Pas assez d'exercices disponibles avec ces filtres — élargis le matériel ou les zones.</td></tr>`}</tbody>
         </table>
+        </div>
         <div class="ex-add-row" style="display:flex; gap:8px; margin-top:10px; align-items:center;">
           <select class="ex-add-select" data-jour="${s.jour}" style="flex:1;">
             <option value="">+ Ajouter un exercice…</option>

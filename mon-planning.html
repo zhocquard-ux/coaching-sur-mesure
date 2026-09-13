@@ -256,6 +256,7 @@ function render(row){
     ` : `
       <div class="plan-day" data-jour="${s.jour}">
         <h3>${s.jour} — ${s.typeJour}</h3>
+        <div class="plan-table-wrap">
         <table class="plan-table">
           <thead><tr><th>Exercice</th><th>Zone</th><th>Format</th><th colspan="3">Enregistrer ma séance</th></tr></thead>
           <tbody>${s.exercices.map((e,i) => {
@@ -271,6 +272,7 @@ function render(row){
             </tr>`;
           }).join("")}</tbody>
         </table>
+        </div>
         ${s.etirements && s.etirements.length ? `
         <div style="margin-top:10px;">
           <strong style="font-size:13px; color:var(--ink-light);">Étirements (fin de séance)</strong>
