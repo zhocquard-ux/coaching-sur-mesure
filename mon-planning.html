@@ -40,9 +40,9 @@ const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (
 // que de se fier aux clés telles que renvoyées par la base.
 const REPAS_ORDER = ["petit_dej", "collation_matin", "dejeuner", "gouter", "diner"];
 const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-// Un seul groupe WhatsApp pour toute la communauté (pas un lien par cliente) —
-// à remplacer par le vrai lien une fois le groupe créé.
-const WHATSAPP_GROUP_LINK = "";
+// Un seul groupe WhatsApp pour toute la communauté (pas un lien par cliente).
+const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/Gu3K9Z7Mjri8YvTXE0Lano?mode=gi_t";
+const CALENDLY_LINK = "https://calendly.com/zooecoach";
 
 function accompagnementHtml(row){
   const blocs = [];
@@ -52,6 +52,8 @@ function accompagnementHtml(row){
   if (row.prochain_call && new Date(row.prochain_call) >= new Date()){
     const d = new Date(row.prochain_call);
     blocs.push(`<div style="font-size:14px;">📞 Ton prochain call avec ta coach : <strong>${d.toLocaleDateString("fr-FR", { day:"numeric", month:"long" })} à ${d.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</strong></div>`);
+  } else if (CALENDLY_LINK){
+    blocs.push(`<a href="${CALENDLY_LINK}" target="_blank" rel="noopener" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line); text-decoration:none; display:inline-block;">📞 Réserver mon prochain call</a>`);
   }
   if (!blocs.length) return "";
   return `<div class="card" style="margin-bottom:24px; display:flex; flex-direction:column; gap:12px; align-items:flex-start;">${blocs.join("")}</div>`;
