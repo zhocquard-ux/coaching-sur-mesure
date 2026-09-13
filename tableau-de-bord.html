@@ -131,6 +131,13 @@ function calculerStatut(row, checkins){
       }
     }
   }
+  if (row.dernier_planning_sport){
+    if (!row.prochain_call){
+      alertes.push({ label:"Aucun call programmé", grave:false });
+    } else if (new Date(row.prochain_call) < new Date()){
+      alertes.push({ label:`Call en retard (prévu le ${new Date(row.prochain_call).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })})`, grave:true });
+    }
+  }
   return { dernier, precedent, alertes, graves: alertes.filter(a => a.grave).length };
 }
 
@@ -175,10 +182,12 @@ function render(){
     ${visibles.map(({row, statut}) => `
       <div class="dash-card ${statut.graves ? "alerte" : ""}">
         <div class="dash-top">
-          <div><span class="dash-name">${row.prenom}</span><span class="dash-tag">${OBJECTIF_LABELS[row.objectif] || row.objectif || "—"}</span><span class="dash-tag">${NIVEAU_LABELS[row.niveau] || row.niveau || "—"}</span></div>
+          <div><span class="dash-name">${row.prenom}</span><span class="dash-tag">${OBJECTIF_LABELS[row.objectif] || row.objectif || "—"}</span><span class="dash-tag">${NIVEAU_LABELS[row.niveau] || row.niveau || "—"}</span><span class="dash-tag">${row.preference_suivi === "prive" ? "Suivi privé" : "Groupe WhatsApp"}</span></div>
         </div>
         ${statut.alertes.length ? `<div>${statut.alertes.map(a => `<span class="dash-alert">${a.grave ? "⚠" : "ℹ"} ${a.label}</span>`).join("")}</div>` : `<div class="dash-alert" style="background:var(--sage-light); border-color:var(--sage); color:var(--terracotta-dark);">✓ Rien à signaler</div>`}
         ${statut.dernier ? `<div class="dash-line">Dernier suivi le ${new Date(statut.dernier.created_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })} — Énergie ${statut.dernier.energie ?? "?"}/10, sport suivi ${statut.dernier.sport_suivi ?? "?"}%, nutrition suivie ${statut.dernier.nutrition_suivi ?? "?"}%${statut.dernier.poids ? `, poids ${statut.dernier.poids}kg` : ""}</div>` : ""}
+        ${row.prochain_call && new Date(row.prochain_call) >= new Date() ? `<div class="dash-line">📞 Prochain call le ${new Date(row.prochain_call).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })} à ${new Date(row.prochain_call).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</div>` : ""}
+        ${row.notes_call ? `<div class="dash-line"><em>${row.notes_call}</em></div>` : ""}
         <div class="dash-actions">
           <a href="generateur.html?cliente=${row.id}" class="header-cta" style="background:transparent; color:var(--ink-light); border:1px solid var(--line); text-decoration:none; display:inline-flex; align-items:center;">Ouvrir la fiche</a>
           <button type="button" class="btn-ghost regen-btn" data-id="${row.id}">↻ Régénérer la semaine</button>

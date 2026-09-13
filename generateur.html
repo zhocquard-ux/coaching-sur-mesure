@@ -313,6 +313,20 @@ function renderForm(){
       </fieldset>
 
       <fieldset>
+        <legend>Accompagnement</legend>
+        <div class="gen-form-grid">
+          <div class="field"><label class="q">Préférence de suivi</label>
+            <select id="f-preference-suivi"><option value="groupe">Groupe WhatsApp (communauté)</option><option value="prive">Suivi privé uniquement</option></select>
+          </div>
+          <div class="field"><label class="q">Prochain call</label><input type="datetime-local" id="f-prochain-call"></div>
+          <div class="field" style="grid-column:1/-1;"><label class="q">Notes sur le call</label>
+            <div class="hint">Ce dont elle veut parler, ce qu'il faut ajuster, comment elle vit le programme...</div>
+            <textarea id="f-notes-call"></textarea>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>Zones prioritaires</legend>
         <div class="checkbox-list">${zonesOptions}</div>
       </fieldset>
@@ -519,7 +533,18 @@ function collecterClient(){
     recettesPreferees: valeursCochees("prefer-recette"),
     supermarche: document.getElementById("f-supermarche").value,
     budgetSemaine: document.getElementById("f-budget").value ? Number(document.getElementById("f-budget").value) : null,
+    preferenceSuivi: document.getElementById("f-preference-suivi").value,
+    prochainCall: document.getElementById("f-prochain-call").value ? new Date(document.getElementById("f-prochain-call").value).toISOString() : null,
+    notesCall: document.getElementById("f-notes-call").value.trim(),
   };
+}
+
+// timestamptz (UTC) <-> <input type="datetime-local"> (heure locale, sans fuseau)
+function isoToDatetimeLocal(iso){
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function remplirFormulaire(c){
@@ -547,6 +572,9 @@ function remplirFormulaire(c){
   document.getElementById("f-tampon-repas").value = c.tampon_repas != null ? c.tampon_repas : 60;
   document.getElementById("f-supermarche").value = c.supermarche || "leclerc";
   document.getElementById("f-budget").value = c.budget_semaine != null ? c.budget_semaine : "";
+  document.getElementById("f-preference-suivi").value = c.preference_suivi || "groupe";
+  document.getElementById("f-prochain-call").value = isoToDatetimeLocal(c.prochain_call);
+  document.getElementById("f-notes-call").value = c.notes_call || "";
   document.getElementById("f-vegetarien").checked = !!c.vegetarien;
   document.getElementById("f-vegan").checked = !!c.vegan;
   document.getElementById("f-sans-gluten").checked = !!c.sans_gluten;
@@ -852,6 +880,7 @@ async function enregistrerFiche(){
     vegetarien: client.vegetarien, vegan: client.vegan, sans_gluten: client.sansGluten, sans_lactose: client.sansLactose,
     aliments_evites: client.alimentsEvites, aliments_evites_libre: client.alimentsEvitesLibre, repas_inclus: client.repasInclus,
     recettes_preferees: client.recettesPreferees, supermarche: client.supermarche, budget_semaine: client.budgetSemaine,
+    preference_suivi: client.preferenceSuivi, prochain_call: client.prochainCall, notes_call: client.notesCall || null,
     dernier_planning_sport: planSport, dernier_planning_repas: planRepas, derniere_liste_courses: liste,
   };
   const btn = document.getElementById("enregistrer-btn");

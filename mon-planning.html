@@ -40,6 +40,22 @@ const REPAS_LABELS = { petit_dej:"Petit-déjeuner", collation_matin:"Collation (
 // que de se fier aux clés telles que renvoyées par la base.
 const REPAS_ORDER = ["petit_dej", "collation_matin", "dejeuner", "gouter", "diner"];
 const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+// Un seul groupe WhatsApp pour toute la communauté (pas un lien par cliente) —
+// à remplacer par le vrai lien une fois le groupe créé.
+const WHATSAPP_GROUP_LINK = "";
+
+function accompagnementHtml(row){
+  const blocs = [];
+  if (row.preference_suivi !== "prive" && WHATSAPP_GROUP_LINK){
+    blocs.push(`<a href="${WHATSAPP_GROUP_LINK}" target="_blank" rel="noopener" class="header-cta" style="text-decoration:none; display:inline-block;">💬 Rejoindre le groupe WhatsApp</a>`);
+  }
+  if (row.prochain_call && new Date(row.prochain_call) >= new Date()){
+    const d = new Date(row.prochain_call);
+    blocs.push(`<div style="font-size:14px;">📞 Ton prochain call avec ta coach : <strong>${d.toLocaleDateString("fr-FR", { day:"numeric", month:"long" })} à ${d.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}</strong></div>`);
+  }
+  if (!blocs.length) return "";
+  return `<div class="card" style="margin-bottom:24px; display:flex; flex-direction:column; gap:12px; align-items:flex-start;">${blocs.join("")}</div>`;
+}
 
 const params = new URLSearchParams(window.location.search);
 const clienteId = params.get("id");
@@ -223,6 +239,8 @@ function render(row){
       <h1 style="font-size:26px; margin-top:6px;">Le planning de ${row.prenom || "toi"}</h1>
       <p>Mis à jour le ${new Date(row.updated_at).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}. Enregistre le poids et les répétitions à chaque séance pour suivre ta progression au fil des semaines.</p>
     </div>
+
+    ${accompagnementHtml(row)}
 
     ${volumeZonesHtml(calculerVolumeParZone(planSport, row.niveau, row.zones_prioritaires))}
 
